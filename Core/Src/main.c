@@ -1,26 +1,27 @@
 /**
-* File name: main.c
-*
-* Created on: 10/15/2025
-* Author: Chase Gattuso
-* 
-
-*
-* Necessary Connections: 
-* 	PD11 - ADC4_IN15: Analog input for AD conversion
-*   PB8 - AF2 TIM_CH3: PWM output
-*   PC13: Blue USER button on board
-*	All LCD connections
-*/
+ * File name: main.c
+ *
+ * Created on: 10/15/2025
+ * Author: Chase Gattuso
+ * 
+ * Code to use for motor controller test.
+ * Outputs a 20 KHz PWM signal with duty cycle controllable
+ * through analog input.
+ *
+ * Necessary Connections: 
+ * 	PD11 - ADC4_IN15: Analog input to control duty cycle
+ *  PA5 - AF1 TIM2_CH1: PWM output
+ *	All LCD connections
+ */
 
 #include "stm32u5xx.h"
 #include "main.h"
 
-// Output PWM at at 20 kHz
+// Output PWM at at 20 kHz assuming 160 MHz clock
 #define T2_PSC 0
 #define T2_ARR 8000
 
-// Read ADC at 1 kHz
+// Read ADC at 1 kHz assuming 160 MHz clock
 #define T3_PSC 159
 #define T3_ARR 1000
 
@@ -31,8 +32,8 @@ void clock_init(void);
 void LCD_init(void);
 void GPIO_init(void);
 void adc4_init(void);
-void init_tim2(void);
-void init_tim3(void);
+void tim2_init(void);
+void tim3_init(void);
 
 // Global variables for ISR
 bool ADC_newval_flag = false;
@@ -47,10 +48,10 @@ int main(void)
 	LCD_init();
     GPIO_init();
     adc4_init();
-    init_tim2();
-    init_tim3();
+    tim2_init();
+    tim3_init();
     
-    float duty_cycle = 0.0; // Duty cycle of PWM output as a float (not percentage)
+    float duty_cycle = 0.0; // Duty cycle of PWM output as a float
 
 	for (;;)
 	{
@@ -78,8 +79,8 @@ void clock_init(void) {
 }
 
 /**
- * Function name: LCD_setup
- * Purpose: Setup and clear LCD
+ * Function name: LCD_init
+ * Purpose: Setup, clear LCD, and print unchanging strings
  */
 void LCD_init(void) {
 	LCD_IO_Init();
@@ -92,11 +93,9 @@ void LCD_init(void) {
 }
 
 /**
- * Function name: GPIO_setup
+ * Function name: GPIO_init
  * Purpose: Setup GPIO pins to be used in program
- * 
- *  PC13: Blue USER button on board 
- *  PB8 - AF2 TIM_CH3: PWM output 
+ *  PB8 - AF1 TIM_CH1: PWM output 
  */
 void GPIO_init(void) {
     // PA5 PWM GPIO setup
@@ -106,7 +105,7 @@ void GPIO_init(void) {
 
 /**
  * Function name: adc4_init
- * Purpose: initialize ADC4 for use in reading inpt voltage
+ * Purpose: initialize ADC4 for use in reading input voltage
  * Settings:
  *  Channel: 15
  *  Conversion mode: single
@@ -145,14 +144,14 @@ void adc4_init(void) {
 }
 
 /**
- * Function name: init_tim2
+ * Function name: tim2_init
  * Purpose: initialize tim2 to drive PWM
  * Settings:
  *  Channel: 1 (PA5)
  *  Frequency: 20 kHZ
  *  Interrupt: None
  */
-void init_tim2(void)
+void tim2_init(void)
 {
     TIM2->PSC = T2_PSC; // Set PSC value
     TIM2->ARR = T2_ARR; // Set ARR value
@@ -167,14 +166,14 @@ void init_tim2(void)
 }
 
 /**
- * Function name: init_tim3
+ * Function name: tim3_init
  * Purpose: initialize tim3 to start AD conversions
  * Settings:
  *  Channel: None
- *  Frequency: XXX kHz
+ *  Frequency: 1 kHz
  *  Interrupt: TIM3_IRQn
  */
-void init_tim3(void) {
+void tim3_init(void) {
     TIM3->PSC = T3_PSC; // Set PSC value
 	TIM3->ARR = T3_ARR; // Set ARR value
 
