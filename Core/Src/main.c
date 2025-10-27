@@ -1,333 +1,210 @@
-/* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
+* File name: main.c
+*
+* Created on: 10/15/2025
+* Author: Chase Gattuso
+* 
+
+*
+* Necessary Connections: 
+* 	PD11 - ADC4_IN15: Analog input for AD conversion
+*   PB8 - AF2 TIM_CH3: PWM output
+*   PC13: Blue USER button on board
+*	All LCD connections
+*/
+
+#include "stm32u5xx.h"
 #include "main.h"
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+// Output PWM at at 20 kHz
+#define T2_PSC 0
+#define T2_ARR 8000
 
-/* USER CODE END Includes */
+// Read ADC at 1 kHz
+#define T3_PSC 159
+#define T3_ARR 1000
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
+#define ADC_RES_MAX 255 // Highest result possible from ADC at current resolution (8 bits)
 
-/* USER CODE END PTD */
+// Function Declarations
+void clock_init(void);
+void LCD_init(void);
+void GPIO_init(void);
+void adc4_init(void);
+void init_tim2(void);
+void init_tim3(void);
 
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
+// Global variables for ISR
+bool ADC_newval_flag = false;
+uint8_t ADC_value = 0;
 
-/* USER CODE END PD */
 
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void SystemPower_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_ICACHE_Init(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
 int main(void)
 {
+    // Setup
+	msoe_clk_setup(160); // uncomment if higher speed desired
+	clock_init();
+	LCD_init();
+    GPIO_init();
+    adc4_init();
+    init_tim2();
+    init_tim3();
+    
+    float duty_cycle = 0.0; // Duty cycle of PWM output as a float (not percentage)
 
-  /* USER CODE BEGIN 1 */
+	for (;;)
+	{
+        // Calculate PWM output on new ADC value
+        if (ADC_newval_flag == true) {
+            duty_cycle = (float)(ADC_RES_MAX - ADC_value) / ADC_RES_MAX; // Calculate inverted duty cycle
+            TIM2->CCR1 = T2_ARR * duty_cycle; // Set new duty cycle
+            LCD_print_udec3(1, 0, ADC_value); // print ADC value to LCD
+            LCD_print_udec3(4, 0, (uint8_t)(duty_cycle*100)); // Convert float to percentage before printing
+        }
+	}
+}
 
-  /* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the System Power */
-  SystemPower_Config();
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_ICACHE_Init();
-  /* USER CODE BEGIN 2 */
-
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+/**
+ * Function name: clock_init
+ * Purpose: Setup clock on STM32U575 for GPIO and timers
+ */
+void clock_init(void) {
+    //RCC->AHB3ENR |= RCC_AHB3ENR_PWREN;  // enable clock for PWR module
+	RCC->AHB2ENR1 |= 0x000000FF; // enable GPIOa - h clocks
+	PWR->SVMCR |= (1 << 29); // set IO2SV bit to allow GPIOG use
+    RCC->APB1ENR1 |= (1 << 0); // enable TIM2 clock
+    RCC->APB1ENR1 |= (1 << 1); // enable TIM3 clock
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  /** Configure the main internal regulator output voltage
-  */
-  if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
-  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_4;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
-                              |RCC_CLOCKTYPE_PCLK3;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
-    Error_Handler();
-  }
+ * Function name: LCD_setup
+ * Purpose: Setup and clear LCD
+ */
+void LCD_init(void) {
+	LCD_IO_Init();
+	LCD_clear();
+    
+    // Print unchanging LCD strings
+    LCD_print_str(0,0,"ADC Raw Value: ");
+    LCD_print_str(3,0,"PWM Duty Cycle: ");
+    LCD_print_str(4,3,"%");
 }
 
 /**
-  * @brief Power Configuration
-  * @retval None
-  */
-static void SystemPower_Config(void)
-{
-  HAL_PWREx_EnableVddIO2();
-
-  /*
-   * Disable the internal Pull-Up in Dead Battery pins of UCPD peripheral
-   */
-  HAL_PWREx_DisableUCPDDeadBattery();
-
-  /*
-   * Switch to SMPS regulator instead of LDO
-   */
-  if (HAL_PWREx_ConfigSupply(PWR_SMPS_SUPPLY) != HAL_OK)
-  {
-    Error_Handler();
-  }
-/* USER CODE BEGIN PWR */
-/* USER CODE END PWR */
+ * Function name: GPIO_setup
+ * Purpose: Setup GPIO pins to be used in program
+ * 
+ *  PC13: Blue USER button on board 
+ *  PB8 - AF2 TIM_CH3: PWM output 
+ */
+void GPIO_init(void) {
+    // PA5 PWM GPIO setup
+    GPIOA->MODER &= ~(0b01 << 10); // set PA5 to alternate function
+	GPIOA->AFR[0] |= (0b0001 << 20); // select alternate function 1 for TIM2_CH1
 }
 
 /**
-  * @brief ICACHE Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ICACHE_Init(void)
+ * Function name: adc4_init
+ * Purpose: initialize ADC4 for use in reading inpt voltage
+ * Settings:
+ *  Channel: 15
+ *  Conversion mode: single
+ *  Sample time: 39.5 clocks
+ *  Resolution: 8 bit
+ *  Interrupt: Using ADC4_IRQn
+ */
+void adc4_init(void) {
+    // Clocks
+    RCC->AHB3ENR |= (1 << 5); // enable ADC4 bus clock
+    RCC->CCIPR3 |= (0b101 << 12); // setup MISK as kernel clock source
+
+    // Power setup
+	PWR->SVMCR |= (1 << 30);  // set ASV bit to remove Vdda power isolation
+	// turn on ADC4 voltage regulator
+	ADC4->ISR |= (1 << 12);
+	ADC4->CR |= (1 << 28);
+	while(!(ADC4->ISR & (1 << 12))); // Wait for LDORDY to be reset
+
+	// Perform calibration
+	ADC4->CR |= (1 << 31);  // initiate calibration
+	while(ADC4->CR & (1 << 31)); // Wait until complete
+
+    // Initialization
+	ADC4->SMPR1 |= (0b101 << 0);  // sample time 39.5 clocks
+	ADC4->CHSELR |= (1 << 15);  // enable channel 15
+	ADC4->CFGR1 |= (0b10 << 2);  // set 8-bit resolution
+    //ADC4->CFGR1 |= (1 << 12); // store new value on overrun
+	// Single conversion enabled by default
+    ADC4->IER |= (1 << 2);  // enable EOC interrupt
+
+    // Enable ADC4
+	ADC4->CR |= (1 << 0);  // enable ADC4
+    // PD11 (IN15) needs GPIO MODER defaults to 0x11 which selects analog mode
+    NVIC_EnableIRQ(ADC4_IRQn); // NVIC interrupt init for ADC4
+}
+
+/**
+ * Function name: init_tim2
+ * Purpose: initialize tim2 to drive PWM
+ * Settings:
+ *  Channel: 1 (PA5)
+ *  Frequency: 20 kHZ
+ *  Interrupt: None
+ */
+void init_tim2(void)
 {
+    TIM2->PSC = T2_PSC; // Set PSC value
+    TIM2->ARR = T2_ARR; // Set ARR value
+    TIM2->CCR1 = T2_ARR; // Initial duty cycle at 50% on CH1
 
-  /* USER CODE BEGIN ICACHE_Init 0 */
-
-  /* USER CODE END ICACHE_Init 0 */
-
-  /* USER CODE BEGIN ICACHE_Init 1 */
-
-  /* USER CODE END ICACHE_Init 1 */
-
-  /** Enable instruction cache in 1-way (direct mapped cache)
-  */
-  if (HAL_ICACHE_ConfigAssociativityMode(ICACHE_1WAY) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_ICACHE_Enable() != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ICACHE_Init 2 */
-
-  /* USER CODE END ICACHE_Init 2 */
+    TIM2->CCMR1 |= ((0b0110 << 4) | (1 << 3));  // PWM1 mode, enable preload reg. - CC1
+    TIM2->CCER |= (1 << 0);  // enable output on pin for CC1
+    TIM2->CR1 |= (1 << 7);  // set ARPE bit - enable auto-reload preload
+    TIM2->EGR |= (1 << 0);  // update timer registers
+    TIM2->CR1 |= (1 << 0);  // enable timer
 
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
+ * Function name: init_tim3
+ * Purpose: initialize tim3 to start AD conversions
+ * Settings:
+ *  Channel: None
+ *  Frequency: XXX kHz
+ *  Interrupt: TIM3_IRQn
+ */
+void init_tim3(void) {
+    TIM3->PSC = T3_PSC; // Set PSC value
+	TIM3->ARR = T3_ARR; // Set ARR value
 
-  /* USER CODE END MX_GPIO_Init_1 */
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : USER_BUTTON_Pin */
-  GPIO_InitStruct.Pin = USER_BUTTON_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED_RED_Pin */
-  GPIO_InitStruct.Pin = LED_RED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_RED_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED_GREEN_Pin */
-  GPIO_InitStruct.Pin = LED_GREEN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GREEN_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PA9 PA10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_9|GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED_BLUE_Pin */
-  GPIO_InitStruct.Pin = LED_BLUE_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_BLUE_GPIO_Port, &GPIO_InitStruct);
-
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* USER CODE END MX_GPIO_Init_2 */
+    TIM3->CR1 |= (1 << 7); // set ARPE bit - enable auto-reload preload
+	TIM3->EGR |= (1 << 0); // update timer registers
+	TIM3->CR1 |= (1 << 2); // interrupt only on over/underflow, also UDIS=0
+	TIM3->DIER |= (1 << 0); // enable update interrupt
+	TIM3->SR &= ~(1 << 0); // clear pending bit
+	TIM3->CR1 |= (1 << 0); // enable timer3
+    NVIC_EnableIRQ(TIM3_IRQn);
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM17 interrupt took place, inside
-  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
-  * a global variable "uwTick" used as application time base.
-  * @param  htim : TIM handle
-  * @retval None
-  */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  /* USER CODE BEGIN Callback 0 */
-
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM17)
-  {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
-
-  /* USER CODE END Callback 1 */
+ * Function name: ADC4_IRQHandler
+ * Purpose: Interrupt to read new ADC4 conversions
+ */
+void ADC4_IRQHandler(void) {
+	ADC_value = ADC4->DR;
+	ADC4->ISR |= (1 << 2); //write 1 to EOC to clear flag
+	ADC_newval_flag = true; // Indicate new conversion ready to main
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
+ * Function name: TIM3_IRQHandler
+ * Purpose: Interrupt to initialize a new ADC4 conversion
+ */
+void TIM3_IRQHandler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  // NVIC_ClearPendingIRQ(TIM2_IRQn);
+	TIM3->SR &= ~(1 << 0);  // clear bit by writing '0' to it
+	ADC4->CR |= (1 << 2); // Begin new ADC conversion
 }
-#ifdef USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */

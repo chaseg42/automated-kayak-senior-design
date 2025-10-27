@@ -29,6 +29,12 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32u5xx_hal.h"
 
+#include "msoe_stm_clock.h"
+#include "msoe_stm_delay.h"
+#include "msoe_stm_lcd.h"
+#include <stdbool.h>
+#include <stdint.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
