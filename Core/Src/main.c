@@ -13,10 +13,19 @@
   */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "ubx.h"
 
 int main(void)
 {
-  // Comment to test remote push
+
+  // Test print for ubx message frames
+  // (Step through the debugger)
+  initialize_ubx_messages(ubx_tx_poll_ack, &UBXFrame);
+  initialize_ubx_messages(ubx_tx_poll_id, &UBXFrame);
+  initialize_ubx_messages(ubx_tx_poll_pvt, &UBXFrame);
+  initialize_ubx_messages(ubx_tx_poll_test, &UBXFrame);
+  
+  // 
   while (1)
   {
   }
