@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include "stm32u575xx.h" // Why am I needing to include this
+#include "msoe_stm_lcd.h"
 
 #define SYSTEM_CLOCK_FREQUENCY_MHZ 160
 

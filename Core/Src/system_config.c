@@ -18,9 +18,13 @@
 
 void system_initialize( void )
 {
-	msoe_clk_setup( SYSTEM_CLOCK_FREQUENCY_MHZ );
-	PWR->SVMCR |= PWR_SVMCR_IO2SV_Msk;	// Set the IO2SV bit. Lets PG[15..2] work
+	// msoe_clk_setup( SYSTEM_CLOCK_FREQUENCY_MHZ );
+	// PWR->SVMCR |= PWR_SVMCR_IO2SV_Msk;	// Set the IO2SV bit. Lets PG[15..2] work
 	// initialize_ports();
+
+	LCD_IO_Init();
+	LCD_clear();
+
 }
 
 
