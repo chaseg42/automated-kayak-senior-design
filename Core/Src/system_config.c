@@ -4,7 +4,7 @@
   * @author         : Jack Bauer
   * @version        : Pre-production v0.0
   * @date           : Feb 23, 2024
-  * @brief          : Main program file for the purposes of developing the NE0-M8U GPS software driver
+  * @brief          : User-defined STM32 configruation file
   ******************************************************************************
   * @attention
   *

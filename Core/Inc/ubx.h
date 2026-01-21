@@ -16,9 +16,8 @@
 #define INC_UBX_H_
 
 #include <stdint.h>
-
-#define byte uint8_t
-#define word uint16_t
+#include "common.h"
+#include "gps.h"
 
 #define SYNC_CHAR_1 0xB5
 #define SYNC_CHAR_2 0x62
@@ -30,6 +29,8 @@
 							  _Generic((TYPE), 						  			  	\
 							  byte *		: _initialize_ubx_frame_from_array,		\
 							  byte 			: _initialize_ubx_frame_from_fields, 	\
+							  word			: _initialize_ubx_frame_from_fields,	\
+							  uint32_t		: _initialize_ubx_frame_from_fields,	\
 							  int			: _initialize_ubx_frame_from_fields 	\
 							  )(FRAME, TYPE, __VA_ARGS__)
 
@@ -87,14 +88,17 @@
 
  struct
  {
-    const word preamble;
+    word preamble;
     byte class;
     byte id;
     word length;
     byte *payload;
     byte checksum_a;
     byte checksum_b;
- }typedef UBXFrame_Typedef;
+ }typedef UBXFrame_Typedef; // Needs renaming
+
+ // Global rx buffer. Must be global since this buffer acquires data under an interrupt!
+extern byte UART4_rxBuffer[256];
 
  // TODO: Figure out how to make these static without gcc complaining to me.
 UBXStatus _initialize_ubx_frame_from_array(UBXFrame_Typedef *ubx_frame, byte *ubx_frame_array, ...);
@@ -102,8 +106,11 @@ UBXStatus _initialize_ubx_frame_from_fields(UBXFrame_Typedef *ubx_frame,
  								  	  	  	                     byte class, byte id,
 											                     word length, byte *payload,
 											                     byte checksum_a, byte checksum_b);
-
-
+void clear_buffer(byte *buffer, word size);
+void decode_ubx_frame(UBXFrame_Typedef *ubx_frame);
+void decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame);
+//static inline void decode_nav(UBXFrame_Typedef *ubx_frame);
+//static inline void decode_sec(UBXFrame_Typedef *ubx_frame);
 
  
 

@@ -20,6 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32u5xx_it.h"
+#include "common.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -59,6 +60,7 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel1;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
 extern UART_HandleTypeDef huart4;
 extern TIM_HandleTypeDef htim17;
+extern byte UART4_rxBuffer[256];
 
 /* USER CODE BEGIN EV */
 
@@ -207,13 +209,7 @@ void SysTick_Handler(void)
   */
 void GPDMA1_Channel0_IRQHandler(void)
 {
-  /* USER CODE BEGIN GPDMA1_Channel0_IRQn 0 */
-
-  /* USER CODE END GPDMA1_Channel0_IRQn 0 */
   HAL_DMA_IRQHandler(&handle_GPDMA1_Channel0);
-  /* USER CODE BEGIN GPDMA1_Channel0_IRQn 1 */
-
-  /* USER CODE END GPDMA1_Channel0_IRQn 1 */
 }
 
 /**
@@ -221,13 +217,7 @@ void GPDMA1_Channel0_IRQHandler(void)
   */
 void GPDMA1_Channel1_IRQHandler(void)
 {
-  /* USER CODE BEGIN GPDMA1_Channel1_IRQn 0 */
-
-  /* USER CODE END GPDMA1_Channel1_IRQn 0 */
   HAL_DMA_IRQHandler(&handle_GPDMA1_Channel1);
-  /* USER CODE BEGIN GPDMA1_Channel1_IRQn 1 */
-
-  /* USER CODE END GPDMA1_Channel1_IRQn 1 */
 }
 
 /**
@@ -235,13 +225,7 @@ void GPDMA1_Channel1_IRQHandler(void)
   */
 void UART4_IRQHandler(void)
 {
-  /* USER CODE BEGIN UART4_IRQn 0 */
-
-  /* USER CODE END UART4_IRQn 0 */
-  HAL_UART_IRQHandler(&huart4);
-  /* USER CODE BEGIN UART4_IRQn 1 */
-
-  /* USER CODE END UART4_IRQn 1 */
+  HAL_UART_IRQHandler(&huart4); // This interrupt has a ton of overhead... Consider changing
 }
 
 /**
@@ -249,15 +233,12 @@ void UART4_IRQHandler(void)
   */
 void TIM17_IRQHandler(void)
 {
-  /* USER CODE BEGIN TIM17_IRQn 0 */
-
-  /* USER CODE END TIM17_IRQn 0 */
   HAL_TIM_IRQHandler(&htim17);
-  /* USER CODE BEGIN TIM17_IRQn 1 */
-
-  /* USER CODE END TIM17_IRQn 1 */
 }
 
-/* USER CODE BEGIN 1 */
 
-/* USER CODE END 1 */
+// Handle data reception in this callback instead of the UART4 IRQ
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 17); // Re-enable the interrupt
+}
