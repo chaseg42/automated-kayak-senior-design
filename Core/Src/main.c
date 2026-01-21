@@ -1,74 +1,34 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @author         : Jack Bauer
+  * @version        : Pre-production v0.0
+  * @date           : Jan 18, 2026
+  * @brief          : Testing application & entry point for the NEO-M8U STM32 software driver
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "ubx.h"
 #include "system_config.h"
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-
 UART_HandleTypeDef huart4;
-DMA_NodeTypeDef Node_GPDMA1_Channel0;
-DMA_QListTypeDef List_GPDMA1_Channel0;
+DMA_HandleTypeDef handle_GPDMA1_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 byte UART4_rxBuffer[256] = {0};
 
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
+void clear_buffer(byte *buffer, word size);
 void SystemClock_Config(void);
 static void SystemPower_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_GPDMA1_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_UART4_Init(void);
-void clear_buffer(byte *buffer);
-/* USER CODE BEGIN PFP */
 
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
@@ -77,18 +37,9 @@ void clear_buffer(byte *buffer);
 int main(void)
 {
 
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
 
   /* Configure the System Power */
   SystemPower_Config();
@@ -96,71 +47,39 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPDMA1_Init(); // FOR SOME REASON, THE AUTO GENERATED STM CODE PUTS THIS AFTER GPIO INIT AND NOTHING REALLY WORKS., GOOD JOB STM!
+  MX_GPDMA1_Init();
   MX_GPIO_Init();
   MX_ICACHE_Init();
   MX_UART4_Init();
   /* USER CODE BEGIN 2 */
 
-  system_initialize();
+  // system_initialize();
 
-  UBXStatus status;
-  UBXFrame_Typedef UBXFrame = FRAME_PREAMBLE;
+//  UBXStatus status;
+//  UBXFrame_Typedef UBXFrame = FRAME_PREAMBLE;
 
-  // Echo test
-  HAL_UART_Transmit(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_ack) / sizeof(byte), 100);
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 17);
+  // Note: DMA transferring does not currently work. This does, however.
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 256); // Initialize UART4 to use the RX interrupt
+  HAL_Delay(250);
+  HAL_UART_Transmit(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id), 100);
+  // HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
 
-  clear_buffer(UART4_rxBuffer);
-
-  // HAL_UART_Transmit_DMA(haurt4, ubx_tx_poll_ack, sizeof(ubx_tx_poll_ack) / sizeof(byte));
-  // LCD_print_hex8(0, 0, ubx_tx_poll_ack[0]);
-  // HAL_Delay(1000); // delay a second
-  // HAL_UART_Receive(&huart4, UART4_rxBuffer, 2, 100);
-//  HAL_Delay(1000);
-  // HAL_Delay(1000);
-  // HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 2);
-  // HAL_UART_Receive_DMA(&huart4, UART4_rxBuffer, sizeof(word));
-  // HAL_UART_Receive_IT(&huart4, UART4_rxBuffer, 256);
-  // HAL_UART_Receive_IT(&huart4, UART4_rxBuffer, 256);
-  LCD_print_hex8(0, 0, UART4_rxBuffer[0]);
-  LCD_print_hex8(1, 0, UART4_rxBuffer[1]);
-
-
-  /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	 HAL_UART_Transmit(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id) / sizeof(byte), 100);
-////	 HAL_Delay(250);
-//	 HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 17);
-//	 HAL_Delay(1000);
-//	 LCD_print_hex8(0, 0, UART4_rxBuffer[0]);
-//	 LCD_print_hex8(1, 0, UART4_rxBuffer[1]);
-	  HAL_UART_Transmit(&huart4, ubx_tx_poll_ack, sizeof(ubx_tx_poll_id) / sizeof(byte), 100);
-	  HAL_UART_Receive_DMA(&huart4, UART4_rxBuffer, 8);
-	  HAL_Delay(1000);
-	  clear_buffer(UART4_rxBuffer);
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+	 //  HAL_UART_Transmit(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id), 100);
+	  HAL_Delay(250);
   }
+
   /* USER CODE END 3 */
 }
 
-// Again, ignore the parser, it doesn't know hat it is doing.
-inline void clear_buffer(byte *buffer)
-{
-	byte *_buffer = buffer;
-	word size = sizeof(_buffer) / sizeof(byte);
 
+// TODO: Clean this mess up and move it out of main
+inline void clear_buffer(byte *buffer, word size)
+{
 	int n = 0;
 
 	for(int i = 0; i < size; i++)
@@ -168,12 +87,18 @@ inline void clear_buffer(byte *buffer)
 		if(n > 10) { break; }
 
 		if(n != 0x00)
-			_buffer[i] = 0;
+			buffer[i] = 0;
 		else
 			n++;
 	}
 
 	return;
+}
+
+//
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 17); // Read in the data here
 }
 
 /**
@@ -263,6 +188,8 @@ static void MX_GPDMA1_Init(void)
   /* GPDMA1 interrupt Init */
     HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+    HAL_NVIC_SetPriority(GPDMA1_Channel1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA1_Channel1_IRQn);
 
   /* USER CODE BEGIN GPDMA1_Init 1 */
 
@@ -367,8 +294,8 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -415,7 +342,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_BLUE_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA11 PA12 */
+  /*Configure GPIO pins : PC10 PC11 */
   // I guess STM32 is selective on what it auto generates
   GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;

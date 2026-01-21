@@ -96,7 +96,7 @@
     byte checksum_b;
  }typedef UBXFrame_Typedef;
 
- // TODO: Figure out how to make these static without gcc complaining at me.
+ // TODO: Figure out how to make these static without gcc complaining to me.
 UBXStatus _initialize_ubx_frame_from_array(UBXFrame_Typedef *ubx_frame, byte *ubx_frame_array, ...);
 UBXStatus _initialize_ubx_frame_from_fields(UBXFrame_Typedef *ubx_frame,
  								  	  	  	                     byte class, byte id,
