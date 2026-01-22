@@ -4,22 +4,21 @@
   * @author         : Jack Bauer
   * @version        : Pre-production v0.0
   * @date           : Jan 18, 2026
-  * @brief          : 
+  * @brief          : This source file contains the necessary functions for interpreting, decoding, and encoding ubx protocol
   ******************************************************************************
   * @attention
   *
   *
   ******************************************************************************
-*/
+**/
 
 #include "ubx.h"
+#include "gps.h"
 #include <string.h>
 
-extern byte UART4_rxBuffer[256];
-GPS_Data_Struct GPS_Data;
+extern byte UART4_rxBuffer[256]; // Defined in main.c
+extern GPS_Data_Struct GPS_Data; // Defined in main.c
 
-//static inline void decode_nav(UBXFrame_Typedef *ubx_frame);
-//static inline void decode_sec(UBXFrame_Typedef *ubx_frame);
 
 // Helper functions to ensure our ubx frame structures are valid
 static inline UBXStatus ubx_frame_valid( word preamble, byte class )
@@ -131,64 +130,71 @@ UBXStatus _initialize_ubx_frame_from_fields(UBXFrame_Typedef *ubx_frame,
 // TODO: Research if clearing the buffer is actually necessary.
 void clear_buffer(byte *buffer, word size)
 {
-	int n = 0;
-
-	for(int i = 0; i < size; i++)
-	{
-		if(n > 10) { break; }
-
-		if(n != 0x00)
-		{
-			buffer[i] = 0;
-		}
-		else
-		{
-			n++;
-		}
-	}
-
+	memset(buffer, 0, size);
 	return;
 }
 
-static inline void decode_nav(UBXFrame_Typedef *ubx_frame)
+static inline UBXStatus decode_nav(UBXFrame_Typedef *ubx_frame)
 {
 	byte *_p = ubx_frame->payload;
-	GPS_Data_Struct _gps;
 
-	// Does this work?
-	memcpy(&_gps, _p, sizeof(_gps));
+	// TODO: status checking here or before just using the checksum.
+//	UBXStatus status;
 
+	// TODO: Automate the offset. There are also other useful navigation solutions that may be useful in the future.
+	memcpy(&GPS_Data.iTOW, &_p[0], sizeof(uint32_t));
+	memcpy(&GPS_Data.year, &_p[4], sizeof(word));
+	memcpy(&GPS_Data.month, &_p[6], sizeof(byte));
+	memcpy(&GPS_Data.day, &_p[7], sizeof(byte));
+	memcpy(&GPS_Data.hour, &_p[8], sizeof(byte));
+	memcpy(&GPS_Data.min, &_p[9], sizeof(byte));
+	memcpy(&GPS_Data.sec, &_p[10], sizeof(byte));
+	memcpy(&GPS_Data.valid, &_p[11], sizeof(byte));
+	memcpy(&GPS_Data.tAcc, &_p[12], sizeof(uint32_t));
+	memcpy(&GPS_Data.nano, &_p[16], sizeof(int));
+	memcpy(&GPS_Data.fixType, &_p[20], sizeof(byte));
+	memcpy(&GPS_Data.flags, &_p[21], sizeof(byte));
+	memcpy(&GPS_Data.flags2, &_p[22], sizeof(byte));
+	memcpy(&GPS_Data.numSV, &_p[23], sizeof(byte));
+	memcpy(&GPS_Data.longitude, &_p[24], sizeof(int));
+	memcpy(&GPS_Data.latitude, &_p[28], sizeof(int));
+	memcpy(&GPS_Data.height, &_p[32], sizeof(int));
+	memcpy(&GPS_Data.hMSL, &_p[36], sizeof(int));
+	memcpy(&GPS_Data.hAcc, &_p[40], sizeof(uint32_t));
+	memcpy(&GPS_Data.vAcc, &_p[44], sizeof(uint32_t));
+	memcpy(&GPS_Data.velN, &_p[48], sizeof(int));
+	memcpy(&GPS_Data.velE, &_p[52], sizeof(int));
+	memcpy(&GPS_Data.velD, &_p[56], sizeof(int));
+	memcpy(&GPS_Data.gSpeed, &_p[60], sizeof(int));
+	memcpy(&GPS_Data.headMot, &_p[64], sizeof(int));
+	memcpy(&GPS_Data.sAcc, &_p[68], sizeof(uint32_t));
+	memcpy(&GPS_Data.headAcc, &_p[72], sizeof(uint32_t));
+	memcpy(&GPS_Data.pDOP, &_p[76], sizeof(word));
+	// Reserved - 6 bytes
+	memcpy(&GPS_Data.headVeh, &_p[84], sizeof(int));
+	memcpy(&GPS_Data.magDec, &_p[88], sizeof(short));
+	memcpy(&GPS_Data.magAcc, &_p[90], sizeof(word));
 
-//	GPS_Data->iTOW = _p[3] << 3 | _p[2] << 2 | _p[1] << 1 | p[0];
-//	GPS_Data->year = _p[5] << 1 | p[4];
-//	GPS_Data->month = _p[6];
-//	GPS_Data->day = _p[7];
-//	GPS_Data->hour = _p[8];
-//	GPS_Data->min = _p[9];
-//	GPS_Data->sec = _p[10];
-//
-//	// Skipping a bunch of unnecessary data //
-//
-//	GPS_Data->numSV = _p[23];
-//	GPS_Data->longitude = _p[27] << 3 | _p[26] << 2 | _p[25] << 1 | _p[24];
-//	GPS_Data->latitude = _p[31] << 3 | _p[30] << 2 | _p[29] << 1 | _p[28];
-
-
+	return UBX_OK;
 }
-static inline void decode_sec(UBXFrame_Typedef *ubx_frame)
+static inline UBXStatus decode_sec(UBXFrame_Typedef *ubx_frame)
 {
+	// TODO: status checking here or before just using the checksum.
+//	UBXStatus status;
+
 	byte _id[5] = { ubx_frame->payload[4], ubx_frame->payload[5], ubx_frame->payload[6], ubx_frame->payload[7], ubx_frame->payload[8] };
 	memcpy(GPS_Data.device_id, _id, sizeof(GPS_Data.device_id));
-	return;
+	return UBX_OK;
 }
 
 // This function assumes we know the command ID! Please do not call commands not explicitly listed in ubx.h.
-void decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame)
+UBXStatus decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame)
 {
 
 	byte *_buffer = UART4_rxBuffer;
 	_initialize_ubx_frame_from_array(ubx_frame, _buffer); // ugh
 	clear_buffer(UART4_rxBuffer, sizeof(UART4_rxBuffer));
+	UBXStatus status;
 
 	// UBX frame actually has data and has been soft-verified
 	// TODO: Implement Fletcher's Algorithm to check the checksum on the received data
@@ -197,7 +203,7 @@ void decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame)
 	  {
 	    case NAV:
 	    	// Assign a GPS data struct here
-	    	decode_nav(ubx_frame);
+	    	status = decode_nav(ubx_frame);
 	    	break;
 	    case RXM:
 	    case INF:
@@ -213,12 +219,14 @@ void decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame)
 	    	assert("Not implemented");
 	    case SEC:
 	    	// Assign a GPS data struct here
-	    	decode_sec(ubx_frame);
+	    	status = decode_sec(ubx_frame);
 	    	break;
 	    case HNR:
 	    	assert("Not implemented");
 	    default:
 	    	assert("Not implemented");
 	  }
+
+	  return status;
 }
 

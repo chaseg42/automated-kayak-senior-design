@@ -2,15 +2,15 @@
   ******************************************************************************
   * @file           : gps.h
   * @author         : Jack Bauer
-  * @version        : 
+  * @version        : Pre-production v0.0
   * @date           : Jan 21, 2026
-  * @brief          : 
+  * @brief          : This header defines the struct where all data from the NEO-M8U will be stored
   ******************************************************************************
   * @attention
   *
   *
   ******************************************************************************
-*/
+**/
 
 #ifndef INC_GPS_H_
 #define INC_GPS_H_
@@ -53,7 +53,7 @@ struct
 	word pDOP;			// Position DOP
 	// Reserved -- 6 bytes //
 	int headVeh;		// Heading of vehicle (2-D) in deg
-	short magDeg;		// Magnetic declination in deg and scaled down to 1e-2
+	short magDec;		// Magnetic declination in deg and scaled down to 1e-2
 	word magAcc;		// Magnetic declination accuracy in deg and scaled down to 1e-2
 }typedef GPS_Data_Struct;
 

@@ -10,26 +10,20 @@
   *
   *
   ******************************************************************************
-  */
+**/
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "hal_config.h"
 #include "system_config.h"
 #include "ubx.h"
+#include "gps.h"
 
 UART_HandleTypeDef huart4;
 DMA_HandleTypeDef handle_GPDMA1_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 byte UART4_rxBuffer[256] = {0};
-
-
-//void clear_buffer(byte *buffer, word size);
-//void SystemClock_Config(void);
-//static void SystemPower_Config(void);
-//static void MX_GPIO_Init(void);
-//static void MX_GPDMA1_Init(void);
-//static void MX_ICACHE_Init(void);
-//static void MX_UART4_Init(void);
+GPS_Data_Struct GPS_Data;
 
 
 /**
@@ -40,18 +34,6 @@ int main(void)
 {
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_System_Init();
-
-//  /* Configure the System Power */
-//  SystemPower_Config();
-//
-//  /* Configure the system clock */
-//  SystemClock_Config();
-//
-//  MX_GPDMA1_Init();UART4_rxBuffer
-//  MX_GPIO_Init();
-//  MX_ICACHE_Init();
-//  MX_UART4_Init();
-
   system_initialize();
 
 //  UBXStatus status;
@@ -59,6 +41,8 @@ int main(void)
 
   // Note: DMA transferring does not currently work. This does, however.
   HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 256); // Initialize UART4 to use the RX interrupt
+  // huart4.Instance->CR1 |= USART_CR1_PEIE;
+
   // HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
   UBXFrame_Typedef UBXFrame;
 
@@ -66,11 +50,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // Using the DMA to transmit is currently not functioning! Using a CPU blocking call instead.
 	  // 										  Division is byte - omitted.
 	  HAL_UART_Transmit(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id), 100);
 	  HAL_Delay(250);
 	  decode_rx_buffer_to_ubx_message(&UBXFrame);
-//	  HAL_UART_Transmit(&huart4, ubx_tx_query_pvt, sizeof(ubx_tx_query_pvt), 100);
+	  HAL_Delay(250);
+	  HAL_UART_Transmit(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_id), 100);
+	  HAL_Delay(250);
+	  decode_rx_buffer_to_ubx_message(&UBXFrame);
+	  HAL_Delay(250);
   }
 
   /* USER CODE END 3 */

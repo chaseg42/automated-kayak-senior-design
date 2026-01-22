@@ -10,14 +10,13 @@
   *
   *
   ******************************************************************************
-  */
+**/
 
 #ifndef INC_UBX_H_
 #define INC_UBX_H_
 
 #include <stdint.h>
 #include "common.h"
-#include "gps.h"
 
 #define SYNC_CHAR_1 0xB5
 #define SYNC_CHAR_2 0x62
@@ -61,7 +60,8 @@
     UBX_ERROR_CLASS = 2,
     UBX_ERROR_ID = 3,
     UBX_ERROR_LENGTH = 4,
-    UBX_ERROR_CHECKSUM = 5
+	UBX_ERROR_PAYLOAD = 5,
+    UBX_ERROR_CHECKSUM = 6
  }typedef UBXStatus;
 
 
@@ -81,10 +81,10 @@
  * 	                USB Frame Structure: As defined in Receiver Description 32.1
     [ Preamble ]    [SYNC CHAR 1] | [SYNC CHAR 1] | [CLASS] | [ID] [LENGTH] | [PAYLOAD] [CHEHCKSUM_A] | [CHECKSUM_B]
  */
- static const byte ubx_tx_poll_ack[8] = { SYNC_CHAR_1, SYNC_CHAR_2, ACK, 0x01, 0x00, 0x00, 0x06, 0x01 };
+ // static const byte ubx_tx_poll_ack[8] = { SYNC_CHAR_1, SYNC_CHAR_2, ACK, 0x01, 0x00, 0x00, 0x06, 0x01 }; I don't think ACK messages work in this format
  static const byte ubx_tx_poll_id[8]  = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
  static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x00, 0x00, 0x08, 0x19 };
- static const byte ubx_tx_poll_test[8] = { SYNC_CHAR_1, SYNC_CHAR_2, INF, 0x03, 0x00, 0x00, 0x07, 0x19 };
+ // static const byte ubx_tx_poll_test[8] = { SYNC_CHAR_1, SYNC_CHAR_2, INF, 0x03, 0x00, 0x00, 0x07, 0x19 }; Log messages disabled due to spam.
 
  struct
  {
@@ -108,7 +108,7 @@ UBXStatus _initialize_ubx_frame_from_fields(UBXFrame_Typedef *ubx_frame,
 											                     byte checksum_a, byte checksum_b);
 void clear_buffer(byte *buffer, word size);
 void decode_ubx_frame(UBXFrame_Typedef *ubx_frame);
-void decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame);
+UBXStatus decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame);
 //static inline void decode_nav(UBXFrame_Typedef *ubx_frame);
 //static inline void decode_sec(UBXFrame_Typedef *ubx_frame);
 

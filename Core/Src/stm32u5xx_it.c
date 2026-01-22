@@ -238,7 +238,7 @@ void TIM17_IRQHandler(void)
 
 
 // Handle data reception in this callback instead of the UART4 IRQ
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 17); // Re-enable the interrupt
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 256); // Re-enable the interrupt
 }
