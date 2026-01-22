@@ -1,0 +1,23 @@
+Template Header
+Author: Jack Bauer
+--------------------
+
+Please add this to your comment template to automate comment header creation
+within STM32Cube.
+Navigate to: Window -> Preferences -> Editor -> Templates -> Comment -> Editor
+
+Paste this tempalate in:
+
+/**
+  ******************************************************************************
+  * @file           : ${file}
+  * @author         : ${user}
+  * @version        : Pre-production v0.0
+  * @date           : ${date}
+  * @brief          :
+  ******************************************************************************
+  * @attention
+  *
+  *
+  ******************************************************************************
+ **/
