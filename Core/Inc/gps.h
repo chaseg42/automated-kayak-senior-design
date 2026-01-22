@@ -48,7 +48,7 @@ struct
 	int velD;			// NED down velocity in mm/s
 	int gSpeed;			// Ground Speed (2-D) in mm/s
 	int headMot;		// Heading of motion (2-D) in deg and scaled down to 1e-5
-	uint32_t sAcc;		// Speed accuracy estiamte in mm/s
+	uint32_t sAcc;		// Speed accuracy estimate in mm/s
 	uint32_t headAcc;	// Heading accuracy estimate in deg and scaled down to 1e-5
 	word pDOP;			// Position DOP
 	// Reserved -- 6 bytes //

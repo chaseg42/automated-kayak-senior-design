@@ -10,7 +10,7 @@
   *
   *
   ******************************************************************************
-*/
+**/
 
 #include "hal_config.h"
 #include "stm32u5xx_hal.h"
@@ -266,6 +266,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
+  // Temporary
+  NVIC_EnableIRQ(EXTI13_IRQn); // Enable Interrupt
+  NVIC_SetPriority(EXTI13_IRQn, 0);
 
   /*Configure GPIO pin : LED_RED_Pin */
   GPIO_InitStruct.Pin = LED_RED_Pin;
@@ -297,21 +300,15 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(LED_BLUE_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC10 PC11 */
-  // I guess STM32 is selective on what it auto generates, because these ports configurations have be generated
+  // I guess STM32 is selective on what it auto generates, because these ports configurations are never generated!
   GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF8_UART4;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* USER CODE END MX_GPIO_Init_2 */
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
 
 /**
   * @brief  Period elapsed callback in non blocking mode
