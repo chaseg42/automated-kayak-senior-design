@@ -20,6 +20,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32h7xx_it.h"
+#include "common.h"
+#include <stdbool.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -58,6 +60,15 @@
 extern UART_HandleTypeDef huart5;
 extern UART_HandleTypeDef huart7;
 extern TIM_HandleTypeDef htim6;
+
+extern DMA_HandleTypeDef handle_GPDMA1_Channel1;
+extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
+extern UART_HandleTypeDef huart4;
+extern TIM_HandleTypeDef htim17;
+extern byte UART4_rxBuffer[256];
+extern bool bTogglePage;
+extern bool bFireOnce;
+extern bool bTogglePage;
 
 /* USER CODE BEGIN EV */
 
@@ -202,6 +213,70 @@ void UART7_IRQHandler(void)
 
   /* USER CODE END UART7_IRQn 1 */
 }
+
+
+/*****************************************
+ *
+ * 				GPS IMPORT
+ *
+ *****************************************/
+
+/**
+  * @brief This function handles GPDMA1 Channel 0 global interrupt.
+  */
+void GPDMA1_Channel0_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&handle_GPDMA1_Channel0);
+}
+
+/**
+  * @brief This function handles GPDMA1 Channel 1 global interrupt.
+  */
+void GPDMA1_Channel1_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&handle_GPDMA1_Channel1);
+}
+
+/**
+  * @brief This function handles UART4 global interrupt.
+  */
+void UART4_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart4);
+}
+
+// Handle data reception in this callback instead of the UART4 IRQ
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, 256); // Re-enable the interrupt
+}
+
+
+// Temporary
+//void EXTI13_IRQHandler( void )
+//{
+//	// Rising Edge Detected
+//	bTogglePage = !bTogglePage;
+//	bFireOnce = true;
+//
+//	EXTI->RPR1 |= 13;
+//}
+
+// Handle the user button
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == USER_BUTTON_Pin)
+	{
+		// Rising Edge Detected
+		bTogglePage = !bTogglePage;
+		bFireOnce = true;
+	}
+	else
+	{
+		__NOP();
+	}
+}
+
 
 /* USER CODE BEGIN 1 */
 

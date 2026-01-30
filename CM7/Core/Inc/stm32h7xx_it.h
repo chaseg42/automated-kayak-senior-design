@@ -25,6 +25,9 @@
 extern "C" {
 #endif
 
+#include "common.h"
+#include <stdbool.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
