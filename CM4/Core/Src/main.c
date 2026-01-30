@@ -35,7 +35,7 @@
 /* DUAL_CORE_BOOT_SYNC_SEQUENCE: Define for dual core boot synchronization    */
 /*                             demonstration code based on hardware semaphore */
 /* This define is present in both CM7/CM4 projects                            */
-/* To comment when developping/debugging on a single core                     */
+/* To comment when developing/debugging on a single core                     */
 #define DUAL_CORE_BOOT_SYNC_SEQUENCE
 
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
