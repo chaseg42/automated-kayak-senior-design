@@ -36,10 +36,10 @@ void system_initialize(void)
 
 	/* Enable the CPU Cache */
 	/* Enable I-Cache---------------------------------------------------------*/
-	SCB_EnableICache();
+//	SCB_EnableICache();
 
 	/* Enable D-Cache---------------------------------------------------------*/
-	SCB_EnableDCache();
+//	SCB_EnableDCache();
 
 	/* USER CODE BEGIN Boot_Mode_Sequence_1 */
 	#if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
@@ -78,11 +78,12 @@ void system_initialize(void)
 
 
 	/* Configure the system peripherals */
-	MX_DMA_Init();
 	MX_GPIO_Init();
 	MX_UART4_Init();
-	MX_UART5_Init();
-	MX_UART7_Init();
+//	MX_UART5_Init();
+//	MX_UART7_Init();
+	HAL_UART_MspInit(&huart4);
+	MX_DMA_Init();
 
 	return;
 }

@@ -82,8 +82,8 @@
     [ Preamble ]    [SYNC CHAR 1] | [SYNC CHAR 1] | [CLASS] | [ID] [LENGTH] | [PAYLOAD] [CHEHCKSUM_A] | [CHECKSUM_B]
  */
  // static const byte ubx_tx_poll_ack[8] = { SYNC_CHAR_1, SYNC_CHAR_2, ACK, 0x01, 0x00, 0x00, 0x06, 0x01 }; I don't think ACK messages work in this format
- static const byte ubx_tx_poll_id[8]  = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
- static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x00, 0x00, 0x08, 0x19 };
+static const byte ubx_tx_poll_id[8]  = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
+static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x00, 0x00, 0x08, 0x19 };
  // static const byte ubx_tx_poll_test[8] = { SYNC_CHAR_1, SYNC_CHAR_2, INF, 0x03, 0x00, 0x00, 0x07, 0x19 }; Log messages disabled due to spam.
 
  struct

@@ -247,7 +247,6 @@ void UART7_IRQHandler(void)
 
   /* USER CODE END UART7_IRQn 1 */
 }
-
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */

@@ -16,8 +16,8 @@
 #include "gps.h"
 #include <string.h>
 
-extern byte UART4_rxBuffer[256]; // Defined in main.c
-extern GPS_Data_Struct GPS_Data; // Defined in main.c
+extern byte UART4_rxBuffer[256]; // Defined in freertos.c
+extern GPS_Data_Struct GPS_Data; // Defined in freertos.c
 
 
 // Helper functions to ensure our ubx frame structures are valid
@@ -134,7 +134,7 @@ void clear_buffer(byte *buffer, word size)
 	return;
 }
 
-static inline UBXStatus decode_nav(UBXFrame_Typedef *ubx_frame)
+static UBXStatus decode_nav(UBXFrame_Typedef *ubx_frame)
 {
 	byte *_p = ubx_frame->payload;
 
