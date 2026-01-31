@@ -14,6 +14,6 @@
 #ifndef INC_HAL_CONFIG_H_
 #define INC_HAL_CONFIG_H_
 
-void HAL_System_Init(void);
+void system_initialize(void);
 
 #endif /* INC_HAL_CONFIG_H_ */

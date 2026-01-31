@@ -23,7 +23,7 @@
 //#define SYSTEM_CLOCK_FREQUENCY_MHZ 160
 
 // Function Prototypes
-void system_initialize( void );
+//void system_initialize( void );
 
 
 #endif /* INC_SYSTEM_CONFIG_H_ */
