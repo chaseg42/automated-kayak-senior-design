@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,7 +70,8 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
   .name = "HeartbeatTimer"
 };
 /* USER CODE BEGIN PV */
-
+uint8_t UART5_rx_data[4];
+uint8_t UART7_rx_data[4];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,7 +83,7 @@ void StartSonarTask(void *argument);
 void HeartbeatCallback(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+bool Sonar_uartToDistance(UART_HandleTypeDef *huart, uint8_t UART_data[4], uint16_t* distance);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -293,7 +294,7 @@ static void MX_UART5_Init(void)
 
   /* USER CODE END UART5_Init 1 */
   huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
+  huart5.Init.BaudRate = 345600;
   huart5.Init.WordLength = UART_WORDLENGTH_8B;
   huart5.Init.StopBits = UART_STOPBITS_1;
   huart5.Init.Parity = UART_PARITY_NONE;
@@ -341,7 +342,7 @@ static void MX_UART7_Init(void)
 
   /* USER CODE END UART7_Init 1 */
   huart7.Instance = UART7;
-  huart7.Init.BaudRate = 115200;
+  huart7.Init.BaudRate = 345600;
   huart7.Init.WordLength = UART_WORDLENGTH_8B;
   huart7.Init.StopBits = UART_STOPBITS_1;
   huart7.Init.Parity = UART_PARITY_NONE;
@@ -406,6 +407,35 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  uint16_t sonar_distance1, sonar_distance2;
+  if (huart->Instance == UART5)
+  {
+    Sonar_uartToDistance(huart, UART5_rx_data, &sonar_distance1);
+  }
+  else if (huart->Instance == UART7)
+  {
+    Sonar_uartToDistance(huart, UART7_rx_data, &sonar_distance2);
+  }
+}
+
+bool Sonar_uartToDistance(UART_HandleTypeDef *huart, uint8_t UART_data[4], uint16_t* distance) {
+  bool retval = false;
+  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+  if (UART_data[0] == 0xff)
+  {
+    if (UART_data[3] == (uint8_t)(UART_data[0] + UART_data[1] + UART_data[2]))
+    {
+      *distance = (UART_data[1] << 8) + UART_data[2];
+      retval = true; // Success
+    }
+  }    
+  HAL_UART_Receive_IT(huart, UART_data, 4);
+  return retval;
+}
+
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartSonarTask */
@@ -418,9 +448,10 @@ static void MX_GPIO_Init(void)
 void StartSonarTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  MX_UART5_Init();
-  MX_UART7_Init();
-  MX_GPIO_Init();
+
+  // Begin waiting for end of data to fire interrupt
+  HAL_UART_Receive_IT(&huart5, UART5_rx_data, 4);
+  HAL_UART_Receive_IT(&huart7, UART7_rx_data, 4);
 
   osTimerStart(HeartbeatTimerHandle, 500); // TODO move timer start to a task that makes more sense
                                            // Create generic init task?
@@ -429,8 +460,13 @@ void StartSonarTask(void *argument)
   for(;;)
   {
     // TODO move each task to its own file
-    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-    osDelay(500);
+    uint8_t command = 0x55; // DFRobot sonar part requires 0x55 to be recieved before responding with data
+
+    // Transmit to all sonar sensors
+    HAL_UART_Transmit(&huart5, &command, 1, 10);
+    HAL_UART_Transmit(&huart7, &command, 1, 10);
+    
+    osDelay(250);
   }
   /* USER CODE END 5 */
 }
