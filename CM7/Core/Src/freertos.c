@@ -176,11 +176,11 @@ void GPSTask(void *argument)
 	while(1)
 	{
 		// TODO: Abstract rx, tx functions
-		uart4_status = HAL_UART_Transmit_IT(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-		while(!b_tx_transfer_complete)
-		b_tx_transfer_complete = false;
+//		while(!b_tx_transfer_complete);
+//		b_tx_transfer_complete = false;
 //
 		osDelay(500);
 

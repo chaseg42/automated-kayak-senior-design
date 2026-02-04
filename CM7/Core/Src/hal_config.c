@@ -84,12 +84,13 @@ void system_initialize(void)
 
 
 	/* Configure the system peripherals */
-	MX_GPIO_Init();
+
+	MX_DMA_Init();
 	MX_UART4_Init();
 //	MX_UART5_Init();
 //	MX_UART7_Init();
 	HAL_UART_MspInit(&huart4);
-	MX_DMA_Init();
+	MX_GPIO_Init();
 
 	return;
 }
