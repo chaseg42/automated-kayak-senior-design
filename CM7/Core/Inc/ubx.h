@@ -35,7 +35,7 @@
 
 
  // Defined in the receiver description section 32.6 UBX Class IDs
- enum ubx_class
+ enum
  {
     NAV = 0x01,
     RXM = 0x02,
@@ -53,9 +53,10 @@
     HNR = 0x28
  } typedef UBXClass;
 
- enum ubx_status
+
+ enum
  {
-    UBX_OK = 0,
+	UBX_OK = 0,
     UBX_ERROR_SYNC = 1,
     UBX_ERROR_CLASS = 2,
     UBX_ERROR_ID = 3,
@@ -81,10 +82,9 @@
  * 	                USB Frame Structure: As defined in Receiver Description 32.1
     [ Preamble ]    [SYNC CHAR 1] | [SYNC CHAR 1] | [CLASS] | [ID] [LENGTH] | [PAYLOAD] [CHEHCKSUM_A] | [CHECKSUM_B]
  */
- // static const byte ubx_tx_poll_ack[8] = { SYNC_CHAR_1, SYNC_CHAR_2, ACK, 0x01, 0x00, 0x00, 0x06, 0x01 }; I don't think ACK messages work in this format
 static const byte ubx_tx_poll_id[8]  = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
 static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x00, 0x00, 0x08, 0x19 };
- // static const byte ubx_tx_poll_test[8] = { SYNC_CHAR_1, SYNC_CHAR_2, INF, 0x03, 0x00, 0x00, 0x07, 0x19 }; Log messages disabled due to spam.
+static const byte ubx_tx_poll_pvt_hnr[8] = { SYNC_CHAR_1, SYNC_CHAR_2, HNR, 0x00, 0x00, 0x00, 0x28, 0xA0 };
 
  struct
  {
@@ -97,8 +97,10 @@ static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x
     byte checksum_b;
  }typedef UBXFrame_Typedef; // Needs renaming
 
+
  // Global rx buffer. Must be global since this buffer acquires data under an interrupt!
 extern byte UART4_rxBuffer[256];
+
 
  // TODO: Figure out how to make these static without gcc complaining to me.
 UBXStatus _initialize_ubx_frame_from_array(UBXFrame_Typedef *ubx_frame, byte *ubx_frame_array, ...);
@@ -107,12 +109,7 @@ UBXStatus _initialize_ubx_frame_from_fields(UBXFrame_Typedef *ubx_frame,
 											                     word length, byte *payload,
 											                     byte checksum_a, byte checksum_b);
 void clear_buffer(byte *buffer, word size);
-void decode_ubx_frame(UBXFrame_Typedef *ubx_frame);
-UBXStatus decode_rx_buffer_to_ubx_message(UBXFrame_Typedef *ubx_frame);
-//static inline void decode_nav(UBXFrame_Typedef *ubx_frame);
-//static inline void decode_sec(UBXFrame_Typedef *ubx_frame);
-
- 
+UBXStatus parse_rx_buffer_to_ubx_frame(UBXFrame_Typedef *ubx_frame);
 
 
 #endif /* INC_UBX_H_ */

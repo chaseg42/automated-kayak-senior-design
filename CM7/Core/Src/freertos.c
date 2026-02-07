@@ -50,10 +50,10 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
  *****************************************/
 osThreadId_t SonarTaskHandle;
 const osThreadAttr_t SonarTask_attributes = {
-  .name = "SonarTask",
-  .stack_size = THREAD_STACK_SIZE,
-  .priority = (osPriority_t) osPriorityNormal,
-};
+                                              .name = "SonarTask",
+                                              .stack_size = THREAD_STACK_SIZE,
+                                              .priority = (osPriority_t) osPriorityNormal,
+                                            };
 
 /*****************************************
  *
@@ -62,10 +62,19 @@ const osThreadAttr_t SonarTask_attributes = {
  *****************************************/
 osThreadId_t GPSTaskHandle;
 const osThreadAttr_t GPSTask_attributes = {
-  .name = "GPSTask",
-  .stack_size = THREAD_STACK_SIZE,
-  .priority = (osPriority_t) osPriorityNormal,
-};
+                                            .name = "GPSTask",
+                                            .stack_size = THREAD_STACK_SIZE,
+                                            .priority = (osPriority_t) osPriorityNormal,
+                                          };
+/*****************************************
+ *
+ * 				GPS Globals
+ *
+ *****************************************/
+byte UART4_rxBuffer[GPS_RX_BUFFER_SIZE] = {0};
+GPSParsedDataStruct GPS_Parsed_Data;
+GPSDataStruct GPS_Data;
+bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 
 
 /* Private function prototypes -----------------------------------------------*/
@@ -155,9 +164,6 @@ void StartSonarTask(void *argument)
   * @retval None
   */
 /* USER CODE END Header_GPSTask */
-byte UART4_rxBuffer[256] = {0};
-GPS_Data_Struct GPS_Data;
-bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 void GPSTask(void *argument)
 {
 //	byte UART4_rxBuffer[256] = {0};
@@ -168,34 +174,47 @@ void GPSTask(void *argument)
 
 	// Note: DMA transferring does not currently work. This does, however.
 	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
-	// static byte _test[8] = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
 
+	// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
+	TickType_t poll_time = configTICK_RATE_HZ;
+	TickType_t current_ticks = 0;
 
 	// Goal: We want to request GPS data continuously when the receiver is ready.
 	// TODO: Indicate to the user when an error occurs in the rx/tx loop
 	while(1)
 	{
-		// TODO: Abstract rx, tx functions
+
+		TickType_t ticks = xTaskGetTickCount();
+
+		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+		while(!b_tx_transfer_complete);
+		b_tx_transfer_complete = false;
+
 		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-//		while(!b_tx_transfer_complete);
-//		b_tx_transfer_complete = false;
-//
-		osDelay(500);
+		while(!b_tx_transfer_complete);
+		b_tx_transfer_complete = false;
 
-//		while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-//		b_rx_transfer_complete = false;
-//		ubx_status = decode_rx_buffer_to_ubx_message(&UBXFrame);
-//		if(ubx_status != UBX_OK) { continue; } // Bail
+		while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+		b_rx_transfer_complete = false;
 
-//		uart4_status = HAL_UART_Transmit(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt), 100);
-//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-//
-//		ubx_status = decode_rx_buffer_to_ubx_message(&UBXFrame);
-//		if(ubx_status != UBX_OK) { continue; } // Bail
+		ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+		if(ubx_status != UBX_OK) { continue; } // Bail
+
+		// Decode information
+		GPS_Data = decode_nav(&GPS_Parsed_Data);
+
+		// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
+
+
+		// osDelay(1000);
+		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
 	}
 }
+
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -203,14 +222,17 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		b_tx_transfer_complete = true;
 	}
-
 }
-// Temporary placement
+
+
+
 // Handle data reception in this callback instead of the UART4 IRQ
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
-	b_rx_transfer_complete = true;
+//	if(huart->Instance == UART4)
+//	{
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
+		b_rx_transfer_complete = true;
+//	}
 }
 

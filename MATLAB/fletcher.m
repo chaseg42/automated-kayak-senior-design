@@ -2,12 +2,12 @@
 % Jack:
 % 1/18/2025: Modified to return a hexadeicmal value
 function [CK_A, CK_B] = fletcher(Buffer)
-    CK_A = uint8(0);
-    CK_B = uint8(0);
+    CK_A = double(0);
+    CK_B = double(0);
     N = length(Buffer);
     for I = 1:N
         % use mod with 2^8 (which is 256)
-        CK_A = mod(CK_A + uint8(Buffer(I)), 256);
+        CK_A = mod(CK_A + double(Buffer(I)), 256);
         CK_B = mod(CK_B + CK_A, 256);
     end
 

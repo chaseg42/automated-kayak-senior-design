@@ -17,6 +17,7 @@
 
 #include "common.h"
 
+// This struct will hold the data the is parsed from UBX commands
 struct
 {
 	// ID Solution
@@ -55,10 +56,48 @@ struct
 	int headVeh;		// Heading of vehicle (2-D) in deg
 	short magDec;		// Magnetic declination in deg and scaled down to 1e-2
 	word magAcc;		// Magnetic declination accuracy in deg and scaled down to 1e-2
-}typedef GPS_Data_Struct;
+
+	// HNR Solution
+	// Mostly same information
+	int speed;			// Only used in HNR solution
+}typedef GPSParsedDataStruct;
 
 
-extern GPS_Data_Struct GPS_Data;
+// Structs for system integrations
+struct
+{
+	double N;
+	double E;
+	double D;
+}typedef NEDVector3;
 
+
+struct
+{
+	word year;
+	byte month;
+	byte day;
+}typedef UTCDate;
+
+struct
+{
+	byte hour;
+	byte min;
+	byte sec;
+}typedef UTCTime;
+
+
+struct
+{
+	NEDVector3 world_position;
+	NEDVector3 velocity;
+	UTCDate utc_date;
+	UTCTime utc_time;
+}typedef GPSDataStruct;
+
+extern GPSParsedDataStruct GPS_Parsed_Data;
+extern GPSDataStruct GPS_Data;
+
+GPSDataStruct decode_nav(GPSParsedDataStruct *gpds);
 
 #endif /* INC_GPS_H_ */
