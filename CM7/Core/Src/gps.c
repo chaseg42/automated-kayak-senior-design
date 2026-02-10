@@ -21,7 +21,7 @@ GPSDataStruct decode_nav(GPSParsedDataStruct *gpds)
 	GPSDataStruct gds;
 
 	// Decode Position
-	double pos[3] = { (double)gpds->latitude * 1e-7, (double)gpds->longitude * 1e-7, gpds->height * 1e-3 };
+	double pos[3] = { (double)gpds->latitude * 1e-7, (double)gpds->longitude * 1e-7, (double)gpds->height * 1e-3 };
 
 	// Decode Velocity
 	double vel[3] = { (double)gpds->velN * 1e-3, (double)gpds->velE * 1e-3, (double)gpds->velD * 1e-3 };

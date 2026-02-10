@@ -1,6 +1,7 @@
 % Credit: https://www.mathworks.com/matlabcentral/answers/1411387-need-to-do-a-8-bit-fletcher-algorithm-checksum
 % Jack:
-% 1/18/2025: Modified to return a hexadeicmal value
+% 1/18/2026: Modified to return a hexadeicmal value
+% 2/5/2026: Apparently mod only works with doubles. Changed from uint8. 
 function [CK_A, CK_B] = fletcher(Buffer)
     CK_A = double(0);
     CK_B = double(0);

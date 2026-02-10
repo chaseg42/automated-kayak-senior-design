@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Page Title</title>
+  </head>
+
+  <body>
+  <div class="container">
+  
+  <div class ="header">
+    <div class="header_left">
+          <h1 class="header-text" style="text-align:center;">Automated Kayak</h1>
+    </div>
+    <div class="header_right">
+          <img src="https://media.istockphoto.com/id/867290448/vector/satellite-icon-black-minimalist-icon-isolated-on-white-background.jpg?s=612x612&w=0&k=20&c=_h24Hn44hfQVGs3SdPXrUxlUF8He_E8zqsALbi7DeNU=" name="satImage" width="100" height="100"/>
+          <h1 style="text-align:right;">{Date/Time}</h1>
+     </div>
+   </div>
+    
+    
+    <div class="body_left">
+      <h1 style="text-align:center;">Command Buttons</h1>
+      <hr style="height:2px;border-width:0;color:black;background-color:black">
+      
+      <button class="button buttonFWD">Forward</button>
+      <button class="button buttonRVR">Reverse</button>
+      <button class="button buttonTL">Turn Left</button>
+      <button class="button buttonTR">Turn Right</button>
+      <button class="button buttonANC">Anchor</button>
+      <button class="button buttonFS">Follow Shoreline</button>
+
+      <h1 style="text-align:center;">Press a button to issue a command</h1>
+    </div>
+    <div class="body_right">
+      <h1 style="text-align:center;">Subsystem Status</h1>
+      
+      <hr style="height:2px;border-width:0;color:black;background-color:black"> 
+      <h1 style="text-align:left;">Power: </h1>
+      <h1 style="text-align:left;">Motors: </h1>
+      <h1 style="text-align:left;">GPS: </h1>
+      <h1 style="text-align:left;">Sonar: </h1>
+      <h1 style="text-align:left;">Radar: </h1>
+    </div>
+  </body>
+</html>
+
+
+<style>
+  .container
+  {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 10vh 1fr;
+    height: 100vh;
+    grid-column-gap: 0px;
+    grid-row-gap: 0px;
+  }
+  
+  .header
+  {
+	grid-area: 1 / 1 / 3 / 3;
+    background: #23a6ce;
+  }
+ 
+  .header_left
+  {
+  	display: flex;
+    justify-content: center;
+    align-items: left;
+  }
+ 
+  .header_right
+  {
+  	display: flex;
+    align-items: flex-end;
+    flex-direction: column;
+    position: absolute;
+    right: 4%;
+    top: 3%;
+    border: 1px;
+  }
+  
+  .header-text
+  {
+  	display: flex;
+   	justify-content: center;
+    align-items: right;
+  }
+  
+  .body_left
+  {
+    grid-area: 2 / 1 / 3 / 2;
+    background: #586158;
+    
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center-top;
+    height: 100%;
+  }
+  
+  .body_right
+  {
+    grid-area: 2 / 2 / 3 / 3;
+    background: #586158;
+  }
+  
+  .button
+  {
+    border: 2px solid;
+    border-color: black;
+    color: black;
+    width: 90%;
+    text-align: center;
+    text-decoration: none;
+    display: grid;
+    font-size: 16px;
+    margin: 1% 0px;
+    padding: 10%;
+  }
+</style>
