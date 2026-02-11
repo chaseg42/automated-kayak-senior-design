@@ -229,14 +229,60 @@ void GPSTask(void *argument)
 	}
 }
 
+/*****************************************
+ *
+ * 				SERIAL DEBUG
+ *
+ *****************************************/
 #define GPS_TIME GPS_Data.utc_time.hour, GPS_Data.utc_time.min, GPS_Data.utc_time.sec
 #define GPS_DATE GPS_Data.utc_date.month, GPS_Data.utc_date.day, GPS_Data.utc_date.year
 #define GPS_VEL	 GPS_Data.velocity.N, GPS_Data.velocity.E, GPS_Data.velocity.D
 #define GPS_POS	 GPS_Data.world_position.N, GPS_Data.world_position.E, GPS_Data.world_position.D
-char *message[] = {"Date: %i/%i/%i\r\n", "Time: %i:%i:%i\r\n", "Position = {N: %.2lf, E: %.2lf, D: %.2lf}\r\n", "Velocity = {N: %.2lf, E: %.2lf, D: %.2lf}\r\n"};
-char *divider = "========================================\r\n";
+const char *message[] = {"Date:", "Time:", "Position:", "Velocity:"};
+const char *divider = "========================================\r\n";
 
-//static void usb_tx(char *message, word size);
+
+enum
+{
+	TYPE_BYTE,
+	TYPE_CHAR,
+	TYPE_WORD,
+	TYPE_INT,
+	TYPE_FLOAT,
+	TYPE_DOUBLE
+
+}typedef ValueType;
+
+enum
+{
+	FORMAT_GENERIC,
+	FORMAT_DATE,
+	FORMAT_TIME,
+	FORMAT_VECTOR
+}typedef FormatType;
+
+struct
+{
+	ValueType type;
+	FormatType format;
+	size_t data_count;
+
+	union
+	{
+		byte *b;
+		char *c;
+		word *w;
+		float *f;
+		double *d;
+	}data;
+
+}typedef ValueTypeDef;
+
+static void usb_tx(char *buffer, int buffer_size, ValueTypeDef *data, const char *message);
+static int construct_message(char *buffer, int buffer_size, ValueTypeDef *data, const char *message);
+static int construct_message_byte(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i);
+static int construct_message_word(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i);
+static int construct_message_double(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i);
 
 void SerialTask(void *argument)
 {
@@ -246,40 +292,64 @@ void SerialTask(void *argument)
 	// __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
 	MX_USB_DEVICE_Init(); //
 
+	char usb_buffer[128] = {0};
+	int usb_buffer_size = sizeof(usb_buffer);
+
+	ValueTypeDef date =
+	{
+		.type = TYPE_WORD,
+		.data_count = 3,
+		.format = FORMAT_DATE,
+		.data.w = NULL
+	};
+
+
+	ValueTypeDef time =
+	{
+		.type = TYPE_BYTE,
+		.data_count = 3,
+		.format = FORMAT_TIME,
+		.data.b = NULL
+	};
+//
+	ValueTypeDef pos =
+	{
+		.type = TYPE_DOUBLE,
+		.data_count = 3,
+		.format = FORMAT_VECTOR,
+		.data.d = NULL
+	};
+
+	ValueTypeDef vel =
+	{
+		.type = TYPE_DOUBLE,
+		.data_count = 3,
+		.format = FORMAT_VECTOR,
+		.data.d = NULL
+	};
+
+
 	while(1)
 	{
 		TickType_t ticks = xTaskGetTickCount();
 
+//		word size = strlen(message[0]) + 1; // Add 1 byte due to word in dataw[2]
+//		char b0[size];
 
-		word size = strlen(message[0]) + 1; // Add 1 byte due to word in dataw[2]
-		char b0[size];
+		word _date[3] = {GPS_DATE};
+		byte _time[3] = {GPS_TIME};
+		double _pos[3] = {GPS_POS};
+		double _vel[3] = {GPS_VEL};
 
-		word dataw[] = {GPS_DATE, GPS_TIME};
+		date.data.w = _date;
+		time.data.b = _time;
+		pos.data.d = _pos;
+		vel.data.d = _vel;
 
-		sprintf(b0, message[0], dataw[0], dataw[1], dataw[2]);
-		CDC_Transmit_FS(b0, sizeof(b0));
-		fflush(stdout);
-		osDelay(200);
-
-		size = strlen(message[1]);
-		char b1[size];
-		sprintf(b1, message[1], dataw[3], dataw[4], dataw[5]);
-		CDC_Transmit_FS(b1, sizeof(b1));
-		osDelay(200);
-
-		float dataf[] = {GPS_POS, GPS_VEL};
-
-		size = strlen(message[2]) + 4; // Not sure why yet the + 4 offset is needed here to capture the newline characters.
-		char b2[size];
-		sprintf(b2, message[2], dataf[0], dataf[1], dataf[2]);
-		CDC_Transmit_FS(b2, sizeof(b2));
-		osDelay(200);
-
-		size = strlen(message[3]);
-		char b3[size];
-		sprintf(b3, message[3], dataf[3], dataf[4], dataf[5]);
-		CDC_Transmit_FS(b3, sizeof(b3));
-		osDelay(200);
+		usb_tx(usb_buffer, usb_buffer_size, &date, message[0]);
+		usb_tx(usb_buffer, usb_buffer_size, &time, message[1]);
+		usb_tx(usb_buffer, usb_buffer_size, &pos, message[2]);
+		usb_tx(usb_buffer, usb_buffer_size, &vel, message[3]);
 
 		CDC_Transmit_FS(divider, strlen(divider));
 
@@ -289,10 +359,92 @@ void SerialTask(void *argument)
 }
 
 
-//static void usb_tx(char *buffer, word size)
-//{
-//	CDC_Transmit_FS(buffer, sizeof(buffer)); // Transmit over USB
-//}
+static void usb_tx(char *buffer, int buffer_size, ValueTypeDef *data, const char *message)
+{
+	// Construct the message
+	int message_size = construct_message(buffer, buffer_size, data, message);
+
+	// Transmit the constructed message
+	CDC_Transmit_FS((char *)buffer, message_size);
+
+	// Clear the buffer
+	clear_buffer((byte *)buffer, buffer_size);
+
+	osDelay(100); // Avoid saturating the USB buffer
+}
+
+static int construct_message(char *buffer, int buffer_size, ValueTypeDef *data, const char *message)
+{
+	// Construct the message
+	int size = snprintf(buffer, buffer_size, "%s ", message);
+
+	for(size_t i = 0; i < data->data_count; i++)
+	{
+		switch(data->format)
+		{
+			case FORMAT_GENERIC:
+				// TODO: Implement generic functionality
+				// size += construct_message_word(data, size, buffer, sizeof(buffer), i);
+				break;
+
+			case FORMAT_DATE:
+				size += construct_message_word(data, size, buffer, buffer_size, i);
+				if(i < (data->data_count - 1))
+				{
+					size += snprintf(buffer + size, buffer_size - size, "/");
+				}
+				break;
+
+			case FORMAT_TIME:
+				size += construct_message_byte(data, size, buffer, buffer_size, i);
+				if(i < (data->data_count - 1))
+				{
+					size += snprintf(buffer + size, buffer_size - size, ":");
+				}
+				break;
+
+			case FORMAT_VECTOR:
+				if(i == 0)
+					size += snprintf(buffer + size, buffer_size - size, "{");
+
+				size += construct_message_double(data, size, buffer, buffer_size, i);
+
+				if(i < data->data_count - 1)
+					size += snprintf(buffer + size, buffer_size - size, ", ");
+
+				if (i == data->data_count - 1)
+					size += snprintf(buffer + size, buffer_size - size, "}");
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	size += snprintf(buffer + size, buffer_size - size, "\r\n");
+
+	return size;
+}
+
+
+static int construct_message_byte(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i)
+{
+	return snprintf(buffer + message_size, buffer_size - message_size, "%u", data->data.b[i]);
+}
+
+static int construct_message_word(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i)
+{
+	return snprintf(buffer + message_size, buffer_size - message_size, "%u", data->data.w[i]);
+}
+
+static int construct_message_double(ValueTypeDef *data, int message_size, char *buffer, int buffer_size, size_t i)
+{
+	return snprintf(buffer + message_size, buffer_size - message_size, "%.2lf", data->data.d[i]);
+}
+
+
+
+
 
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
