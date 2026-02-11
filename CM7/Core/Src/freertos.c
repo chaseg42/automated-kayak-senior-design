@@ -26,6 +26,7 @@
 #include "usart.h"
 #include "gps.h"
 #include "ubx.h"
+#include "usb_device.h"
 #include <stdbool.h>
 
 // TODO: Consider splitting tasks into subsystem task files to reduce file complexity
@@ -42,6 +43,13 @@ osTimerId_t HeartbeatTimerHandle;
 const osTimerAttr_t HeartbeatTimer_attributes = {
   .name = "HeartbeatTimer"
 };
+
+osThreadId_t SerialTaskHandle;
+const osThreadAttr_t SerialTask_attributes = {
+                                            .name = "SerialTask",
+                                            .stack_size = THREAD_STACK_SIZE*16,
+                                            .priority = (osPriority_t) osPriorityNormal,
+                                          };
 
 /*****************************************
  *
@@ -77,6 +85,8 @@ GPSDataStruct GPS_Data;
 bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 
 
+
+
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
@@ -85,6 +95,7 @@ bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 void HeartbeatCallback(void *argument);
 void StartSonarTask(void *argument);
 void GPSTask(void *argument);
+void SerialTask(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -93,7 +104,8 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   * @param  None
   * @retval None
   */
-void MX_FREERTOS_Init(void) {
+void MX_FREERTOS_Init(void)
+{
 
 	// Initialization
 
@@ -109,6 +121,9 @@ void MX_FREERTOS_Init(void) {
 	// Threads
 //	SonarTaskHandle = osThreadNew(StartSonarTask, NULL, &SonarTask_attributes);
 	GPSTaskHandle = osThreadNew(GPSTask, NULL, &GPSTask_attributes);
+
+
+	SerialTaskHandle = osThreadNew(SerialTask, NULL, &SerialTask_attributes);
 
 
 	// Events
@@ -130,7 +145,6 @@ void HeartbeatCallback(void *argument)
  * 				SONAR
  *
  *****************************************/
-osThreadId_t SonarTaskHandle;
 /* USER CODE BEGIN Header_StartSonarTask */
 /**
   * @brief  Function implementing the SonarTask thread.
@@ -186,11 +200,11 @@ void GPSTask(void *argument)
 
 		TickType_t ticks = xTaskGetTickCount();
 
-		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
-		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-
-		while(!b_tx_transfer_complete);
-		b_tx_transfer_complete = false;
+//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+//
+//		while(!b_tx_transfer_complete);
+//		b_tx_transfer_complete = false;
 
 		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
@@ -214,6 +228,71 @@ void GPSTask(void *argument)
 		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
 	}
 }
+
+#define GPS_TIME GPS_Data.utc_time.hour, GPS_Data.utc_time.min, GPS_Data.utc_time.sec
+#define GPS_DATE GPS_Data.utc_date.month, GPS_Data.utc_date.day, GPS_Data.utc_date.year
+#define GPS_VEL	 GPS_Data.velocity.N, GPS_Data.velocity.E, GPS_Data.velocity.D
+#define GPS_POS	 GPS_Data.world_position.N, GPS_Data.world_position.E, GPS_Data.world_position.D
+char *message[] = {"Date: %i/%i/%i\r\n", "Time: %i:%i:%i\r\n", "Position = {N: %.2lf, E: %.2lf, D: %.2lf}\r\n", "Velocity = {N: %.2lf, E: %.2lf, D: %.2lf}\r\n"};
+char *divider = "========================================\r\n";
+
+//static void usb_tx(char *message, word size);
+
+void SerialTask(void *argument)
+{
+//	vTaskDelete( NULL );
+	TickType_t poll_time = configTICK_RATE_HZ * 2;
+	TickType_t current_ticks = 0;
+	// __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
+	MX_USB_DEVICE_Init(); //
+
+	while(1)
+	{
+		TickType_t ticks = xTaskGetTickCount();
+
+
+		word size = strlen(message[0]) + 1; // Add 1 byte due to word in dataw[2]
+		char b0[size];
+
+		word dataw[] = {GPS_DATE, GPS_TIME};
+
+		sprintf(b0, message[0], dataw[0], dataw[1], dataw[2]);
+		CDC_Transmit_FS(b0, sizeof(b0));
+		fflush(stdout);
+		osDelay(200);
+
+		size = strlen(message[1]);
+		char b1[size];
+		sprintf(b1, message[1], dataw[3], dataw[4], dataw[5]);
+		CDC_Transmit_FS(b1, sizeof(b1));
+		osDelay(200);
+
+		float dataf[] = {GPS_POS, GPS_VEL};
+
+		size = strlen(message[2]) + 4; // Not sure why yet the + 4 offset is needed here to capture the newline characters.
+		char b2[size];
+		sprintf(b2, message[2], dataf[0], dataf[1], dataf[2]);
+		CDC_Transmit_FS(b2, sizeof(b2));
+		osDelay(200);
+
+		size = strlen(message[3]);
+		char b3[size];
+		sprintf(b3, message[3], dataf[3], dataf[4], dataf[5]);
+		CDC_Transmit_FS(b3, sizeof(b3));
+		osDelay(200);
+
+		CDC_Transmit_FS(divider, strlen(divider));
+
+		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
+	}
+
+}
+
+
+//static void usb_tx(char *buffer, word size)
+//{
+//	CDC_Transmit_FS(buffer, sizeof(buffer)); // Transmit over USB
+//}
 
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)

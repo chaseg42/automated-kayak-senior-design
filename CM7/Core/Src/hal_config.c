@@ -19,6 +19,7 @@
 #include "dma.h"
 #include "usart.h"
 #include "gpio.h"
+#include "usb_device.h"
 
 
 /* DUAL_CORE_BOOT_SYNC_SEQUENCE: Define for dual core boot synchronization    */
@@ -84,14 +85,12 @@ void system_initialize(void)
 
 
 	/* Configure the system peripherals */
-
 	MX_DMA_Init();
 	MX_UART4_Init();
 //	MX_UART5_Init();
 //	MX_UART7_Init();
 	HAL_UART_MspInit(&huart4);
 	MX_GPIO_Init();
-
 	return;
 }
 
