@@ -60,6 +60,17 @@ struct
 	// HNR Solution
 	// Mostly same information
 	int speed;			// Only used in HNR solution
+
+
+	// ATT Solution
+	byte version;
+	int roll;
+	int pitch;
+	int yaw;
+	uint32_t accRoll;
+	uint32_t accPitch;
+	uint32_t accYaw;
+
 }typedef GPSParsedDataStruct;
 
 
@@ -69,7 +80,7 @@ struct
 	double N;
 	double E;
 	double D;
-}typedef NEDVector3;
+}typedef NEDVector3; // Needs refactoring due to rotation addition
 
 
 struct
@@ -91,6 +102,7 @@ struct
 {
 	NEDVector3 world_position;
 	NEDVector3 velocity;
+	NEDVector3 rotation;
 	UTCDate utc_date;
 	UTCTime utc_time;
 }typedef GPSDataStruct;

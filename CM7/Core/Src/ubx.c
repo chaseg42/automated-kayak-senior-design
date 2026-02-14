@@ -194,39 +194,57 @@ static UBXStatus parse_nav(UBXFrame_Typedef *ubx_frame)
 {
 	byte *_p = ubx_frame->payload;
 
-	// TODO: Automate the offset. There are also other useful navigation solutions that may be useful in the future.
-	memcpy(&GPS_Parsed_Data.iTOW, 			&_p[0], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.year, 			&_p[4], 		sizeof(word));
-	memcpy(&GPS_Parsed_Data.month, 			&_p[6], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.day, 			&_p[7], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.hour, 			&_p[8], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.min, 			&_p[9], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.sec, 			&_p[10], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.valid, 			&_p[11], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.tAcc, 			&_p[12], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.nano, 			&_p[16], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.fixType, 		&_p[20], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.flags, 			&_p[21], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.flags2, 		&_p[22], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.numSV, 			&_p[23], 		sizeof(byte));
-	memcpy(&GPS_Parsed_Data.longitude, 		&_p[24], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.latitude, 		&_p[28], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.height, 		&_p[32], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.hMSL, 			&_p[36], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.hAcc, 			&_p[40], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.vAcc, 			&_p[44], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.velN, 			&_p[48], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.velE, 			&_p[52], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.velD, 			&_p[56], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.gSpeed, 		&_p[60], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.headMot, 		&_p[64], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.sAcc, 			&_p[68], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.headAcc, 		&_p[72], 		sizeof(uint32_t));
-	memcpy(&GPS_Parsed_Data.pDOP, 			&_p[76], 		sizeof(word));
-	// Reserved - 6 bytes //	// Reserved - 6 bytes // 	// Reserved - 6 bytes //
-	memcpy(&GPS_Parsed_Data.headVeh, 		&_p[84], 		sizeof(int));
-	memcpy(&GPS_Parsed_Data.magDec, 		&_p[88], 		sizeof(short));
-	memcpy(&GPS_Parsed_Data.magAcc, 		&_p[90], 		sizeof(word));
+	switch(ubx_frame->id)
+	{
+		// Attitude solution
+		case 0x05:
+			memcpy(&GPS_Parsed_Data.iTOW, 			&_p[0], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.version, 		&_p[4], 		sizeof(byte));
+			// Reserved - 3 bytes //	// Reserved - 3 bytes // 	// Reserved - 3 bytes //
+			memcpy(&GPS_Parsed_Data.roll, 			&_p[8], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.pitch, 			&_p[12], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.yaw, 			&_p[16], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.accRoll, 		&_p[20], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.accPitch, 		&_p[24], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.accYaw, 		&_p[28], 		sizeof(uint32_t));
+
+		// Navigation solution
+		case 0x07:
+			// TODO: Automate the offset. There are also other useful navigation solutions that may be useful in the future.
+			memcpy(&GPS_Parsed_Data.iTOW, 			&_p[0], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.year, 			&_p[4], 		sizeof(word));
+			memcpy(&GPS_Parsed_Data.month, 			&_p[6], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.day, 			&_p[7], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.hour, 			&_p[8], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.min, 			&_p[9], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.sec, 			&_p[10], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.valid, 			&_p[11], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.tAcc, 			&_p[12], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.nano, 			&_p[16], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.fixType, 		&_p[20], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.flags, 			&_p[21], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.flags2, 		&_p[22], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.numSV, 			&_p[23], 		sizeof(byte));
+			memcpy(&GPS_Parsed_Data.longitude, 		&_p[24], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.latitude, 		&_p[28], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.height, 		&_p[32], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.hMSL, 			&_p[36], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.hAcc, 			&_p[40], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.vAcc, 			&_p[44], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.velN, 			&_p[48], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.velE, 			&_p[52], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.velD, 			&_p[56], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.gSpeed, 		&_p[60], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.headMot, 		&_p[64], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.sAcc, 			&_p[68], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.headAcc, 		&_p[72], 		sizeof(uint32_t));
+			memcpy(&GPS_Parsed_Data.pDOP, 			&_p[76], 		sizeof(word));
+			// Reserved - 6 bytes //	// Reserved - 6 bytes // 	// Reserved - 6 bytes //
+			memcpy(&GPS_Parsed_Data.headVeh, 		&_p[84], 		sizeof(int));
+			memcpy(&GPS_Parsed_Data.magDec, 		&_p[88], 		sizeof(short));
+			memcpy(&GPS_Parsed_Data.magAcc, 		&_p[90], 		sizeof(word));
+		break;
+	}
 
 	return UBX_OK;
 }

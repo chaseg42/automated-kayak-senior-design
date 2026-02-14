@@ -26,6 +26,9 @@ GPSDataStruct decode_nav(GPSParsedDataStruct *gpds)
 	// Decode Velocity
 	double vel[3] = { (double)gpds->velN * 1e-3, (double)gpds->velE * 1e-3, (double)gpds->velD * 1e-3 };
 
+	// Decode Rotation
+	double rot[3] = { (double)gpds->pitch * 1e-5, (double)gpds->yaw * 1e-5, (double)gpds->roll * 1e-5 };
+
 	// Decode UTC Date
 	word date[3] = { gpds->month, gpds->day, gpds->year };
 
@@ -38,6 +41,9 @@ GPSDataStruct decode_nav(GPSParsedDataStruct *gpds)
 	gds.velocity.N = vel[0];
 	gds.velocity.E = vel[1];
 	gds.velocity.D = vel[2];
+	gds.rotation.N = rot[0];
+	gds.rotation.E = rot[1];
+	gds.rotation.D = rot[2];
 	gds.utc_date.month = date[0];
 	gds.utc_date.day = date[1];
 	gds.utc_date.year = date[2];

@@ -34,6 +34,7 @@
 
 #define THREAD_STACK_SIZE 512 // In increments of 128
 #define GPS_RX_BUFFER_SIZE 256
+#define TEST_GPS
 
 /*****************************************
  *
@@ -51,6 +52,7 @@ const osThreadAttr_t SerialTask_attributes = {
                                             .stack_size = THREAD_STACK_SIZE*16,
                                             .priority = (osPriority_t) osPriorityNormal,
                                           };
+bool b_user_button_pressed = 0;
 
 /*****************************************
  *
@@ -135,9 +137,7 @@ void MX_FREERTOS_Init(void)
 /* HeartbeatCallback function */
 void HeartbeatCallback(void *argument)
 {
-  /* USER CODE BEGIN HeartbeatCallback */
-	  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
-  /* USER CODE END HeartbeatCallback */
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
 }
 
 
@@ -164,6 +164,7 @@ void StartSonarTask(void *argument)
 ////		osDelay(500);
 //	}
   /* USER CODE END StartSonarTask */
+	vTaskDelete( NULL );
 }
 
 
@@ -194,21 +195,53 @@ void GPSTask(void *argument)
 	TickType_t poll_time = configTICK_RATE_HZ;
 	TickType_t current_ticks = 0;
 
+	int test_step_counter = 0;
+
 	// Goal: We want to request GPS data continuously when the receiver is ready.
 	// TODO: Indicate to the user when an error occurs in the rx/tx loop
 	while(1)
 	{
+		while(!b_user_button_pressed);
 
 		TickType_t ticks = xTaskGetTickCount();
 
-//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
-//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-//
-//		while(!b_tx_transfer_complete);
-//		b_tx_transfer_complete = false;
+		#ifdef TEST_AUX
+			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
-		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+			while(!b_tx_transfer_complete);
+			b_tx_transfer_complete = false;
+
+			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+			b_rx_transfer_complete = false;
+		#endif
+
+		#ifdef TEST_GPS
+		switch(test_step_counter)
+		{
+			case 1:
+				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+			break;
+
+			case 2 ... 3:
+				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+				while(!b_tx_transfer_complete);
+				b_tx_transfer_complete = false;
+
+				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+				b_rx_transfer_complete = false;
+
+				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_att, sizeof(ubx_tx_poll_att));
+				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+			break;
+
+			default:
+				test_step_counter = 0;
+			break;
+		}
 
 		while(!b_tx_transfer_complete);
 		b_tx_transfer_complete = false;
@@ -223,9 +256,14 @@ void GPSTask(void *argument)
 		GPS_Data = decode_nav(&GPS_Parsed_Data);
 
 		// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
+		#endif
+
+		b_user_button_pressed = false;
 
 		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
 	}
+
+	vTaskDelete( NULL );
 }
 
 /*****************************************
@@ -237,14 +275,12 @@ void GPSTask(void *argument)
 #define GPS_DATE GPS_Data.utc_date.month, GPS_Data.utc_date.day, GPS_Data.utc_date.year
 #define GPS_VEL	 GPS_Data.velocity.N, GPS_Data.velocity.E, GPS_Data.velocity.D
 #define GPS_POS	 GPS_Data.world_position.N, GPS_Data.world_position.E, GPS_Data.world_position.D
-
+#define GPS_ROT  GPS_Data.rotation.N, GPS_Data.rotation.E, GPS_Data.rotation.D
 
 void SerialTask(void *argument)
 {
-//	vTaskDelete( NULL );
 	TickType_t poll_time = configTICK_RATE_HZ * 2;
 	TickType_t current_ticks = 0;
-	// __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
 	MX_USB_DEVICE_Init(); //
 
 	char usb_buffer[128] = {0};
@@ -283,35 +319,45 @@ void SerialTask(void *argument)
 		.data.d = NULL
 	};
 
-	const char *message[] = {"Date:", "Time:", "Position:", "Velocity:"};
+	ValueTypeDef rot =
+	{
+		.type = TYPE_DOUBLE,
+		.data_count = 3,
+		.format = FORMAT_VECTOR,
+		.data.d = NULL
+	};
+
+	const char *message[] = {"Date:", "Time:", "Position:", "Velocity:", "Rotation:"};
 	const char *divider = "========================================\r\n";
 
 	while(1)
 	{
 		TickType_t ticks = xTaskGetTickCount();
 
-//		word size = strlen(message[0]) + 1; // Add 1 byte due to word in dataw[2]
-//		char b0[size];
-
 		word _date[3] = {GPS_DATE};
 		byte _time[3] = {GPS_TIME};
 		double _pos[3] = {GPS_POS};
 		double _vel[3] = {GPS_VEL};
+		double _rot[3] = {GPS_ROT};
 
 		date.data.w = _date;
 		time.data.b = _time;
 		pos.data.d = _pos;
 		vel.data.d = _vel;
+		rot.data.d = _rot;
 
 		usb_tx(usb_buffer, usb_buffer_size, &date, message[0]);
 		usb_tx(usb_buffer, usb_buffer_size, &time, message[1]);
 		usb_tx(usb_buffer, usb_buffer_size, &pos, message[2]);
 		usb_tx(usb_buffer, usb_buffer_size, &vel, message[3]);
+		usb_tx(usb_buffer, usb_buffer_size, &rot, message[4]);
 
 		CDC_Transmit_FS(divider, strlen(divider));
 
 		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
 	}
+
+	vTaskDelete( NULL );
 
 }
 
@@ -329,10 +375,18 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 // Handle data reception in this callback instead of the UART4 IRQ
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-//	if(huart->Instance == UART4)
-//	{
+	if(huart->Instance == UART4)
+	{
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
 		b_rx_transfer_complete = true;
-//	}
+	}
 }
 
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_13)
+	{
+		b_user_button_pressed = true;
+	}
+}

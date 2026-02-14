@@ -85,6 +85,7 @@
 static const byte ubx_tx_poll_id[8]  = { SYNC_CHAR_1, SYNC_CHAR_2, SEC, 0x03, 0x00, 0x00, 0x2A, 0xA5 };
 static const byte ubx_tx_poll_pvt[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x07, 0x00, 0x00, 0x08, 0x19 };
 static const byte ubx_tx_poll_pvt_hnr[8] = { SYNC_CHAR_1, SYNC_CHAR_2, HNR, 0x00, 0x00, 0x00, 0x28, 0xA0 };
+static const byte ubx_tx_poll_att[8] = { SYNC_CHAR_1, SYNC_CHAR_2, NAV, 0x05, 0x00, 0x00, 0x06, 0x13 };
 
  struct
  {
