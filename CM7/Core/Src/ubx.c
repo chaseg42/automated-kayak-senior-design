@@ -207,6 +207,7 @@ static UBXStatus parse_nav(UBXFrame_Typedef *ubx_frame)
 			memcpy(&GPS_Parsed_Data.accRoll, 		&_p[20], 		sizeof(uint32_t));
 			memcpy(&GPS_Parsed_Data.accPitch, 		&_p[24], 		sizeof(uint32_t));
 			memcpy(&GPS_Parsed_Data.accYaw, 		&_p[28], 		sizeof(uint32_t));
+		break;
 
 		// Navigation solution
 		case 0x07:

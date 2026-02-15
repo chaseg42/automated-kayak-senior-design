@@ -52,7 +52,6 @@ const osThreadAttr_t SerialTask_attributes = {
                                             .stack_size = THREAD_STACK_SIZE*16,
                                             .priority = (osPriority_t) osPriorityNormal,
                                           };
-bool b_user_button_pressed = 0;
 
 /*****************************************
  *
@@ -125,8 +124,9 @@ void MX_FREERTOS_Init(void)
 //	SonarTaskHandle = osThreadNew(StartSonarTask, NULL, &SonarTask_attributes);
 	GPSTaskHandle = osThreadNew(GPSTask, NULL, &GPSTask_attributes);
 
-
+	#ifdef TEST_GPS
 	SerialTaskHandle = osThreadNew(SerialTask, NULL, &SerialTask_attributes);
+	#endif
 
 
 	// Events
@@ -195,13 +195,13 @@ void GPSTask(void *argument)
 	TickType_t poll_time = configTICK_RATE_HZ;
 	TickType_t current_ticks = 0;
 
-	int test_step_counter = 0;
+	uint32_t notification_count = 0;
 
 	// Goal: We want to request GPS data continuously when the receiver is ready.
 	// TODO: Indicate to the user when an error occurs in the rx/tx loop
 	while(1)
 	{
-		while(!b_user_button_pressed);
+		notification_count += ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 		TickType_t ticks = xTaskGetTickCount();
 
@@ -217,11 +217,22 @@ void GPSTask(void *argument)
 		#endif
 
 		#ifdef TEST_GPS
-		switch(test_step_counter)
+		switch(notification_count)
 		{
 			case 1:
 				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
 				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+				while(!b_tx_transfer_complete);
+				b_tx_transfer_complete = false;
+
+				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+				b_rx_transfer_complete = false;
+
+				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+				if(ubx_status != UBX_OK) { continue; } // Bail
+
+				decode_sec(&GPS_Parsed_Data, &GPS_Data);
 			break;
 
 			case 2 ... 3:
@@ -234,33 +245,38 @@ void GPSTask(void *argument)
 				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
 				b_rx_transfer_complete = false;
 
+				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+				if(ubx_status != UBX_OK) { continue; } // Bail
+
 				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_att, sizeof(ubx_tx_poll_att));
 				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+				while(!b_tx_transfer_complete);
+				b_tx_transfer_complete = false;
+
+				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+				b_rx_transfer_complete = false;
+
+				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+				if(ubx_status != UBX_OK) { continue; } // Bail
+
+				decode_nav(&GPS_Parsed_Data, &GPS_Data);
+
+				if(notification_count >= 3) {notification_count = 0; }
 			break;
 
 			default:
-				test_step_counter = 0;
+				notification_count = 0;
 			break;
 		}
-
-		while(!b_tx_transfer_complete);
-		b_tx_transfer_complete = false;
-
-		while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-		b_rx_transfer_complete = false;
-
-		ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-		if(ubx_status != UBX_OK) { continue; } // Bail
-
-		// Decode information
-		GPS_Data = decode_nav(&GPS_Parsed_Data);
 
 		// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 		#endif
 
-		b_user_button_pressed = false;
-
 		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
+
+		xTaskNotifyGive(SerialTaskHandle);
+
 	}
 
 	vTaskDelete( NULL );
@@ -276,6 +292,7 @@ void GPSTask(void *argument)
 #define GPS_VEL	 GPS_Data.velocity.N, GPS_Data.velocity.E, GPS_Data.velocity.D
 #define GPS_POS	 GPS_Data.world_position.N, GPS_Data.world_position.E, GPS_Data.world_position.D
 #define GPS_ROT  GPS_Data.rotation.N, GPS_Data.rotation.E, GPS_Data.rotation.D
+#define GPS_ID   GPS_Data.device_id
 
 void SerialTask(void *argument)
 {
@@ -327,30 +344,62 @@ void SerialTask(void *argument)
 		.data.d = NULL
 	};
 
-	const char *message[] = {"Date:", "Time:", "Position:", "Velocity:", "Rotation:"};
+
+	ValueTypeDef id =
+	{
+		.type = TYPE_BYTE,
+		.data_count = 5,
+		.format = FORMAT_GENERIC,
+		.data.b = NULL
+	};
+
+	const char *message[] = {"Date:", "Time:", "Position:", "Velocity:", "Rotation:", "ID:"};
 	const char *divider = "========================================\r\n";
+
+	uint32_t notification_count = 0;
 
 	while(1)
 	{
+
 		TickType_t ticks = xTaskGetTickCount();
 
-		word _date[3] = {GPS_DATE};
-		byte _time[3] = {GPS_TIME};
-		double _pos[3] = {GPS_POS};
-		double _vel[3] = {GPS_VEL};
-		double _rot[3] = {GPS_ROT};
+		notification_count += ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-		date.data.w = _date;
-		time.data.b = _time;
-		pos.data.d = _pos;
-		vel.data.d = _vel;
-		rot.data.d = _rot;
+		switch(notification_count)
+		{
+			case 1:
+				byte _id[5];
+				memcpy(_id, GPS_ID, sizeof(GPS_ID));
+				id.data.b = _id;
+				usb_tx(usb_buffer, usb_buffer_size, &id, message[5]);
+			break;
 
-		usb_tx(usb_buffer, usb_buffer_size, &date, message[0]);
-		usb_tx(usb_buffer, usb_buffer_size, &time, message[1]);
-		usb_tx(usb_buffer, usb_buffer_size, &pos, message[2]);
-		usb_tx(usb_buffer, usb_buffer_size, &vel, message[3]);
-		usb_tx(usb_buffer, usb_buffer_size, &rot, message[4]);
+			case 2 ... 3:
+				word _date[3] = {GPS_DATE};
+				byte _time[3] = {GPS_TIME};
+				double _pos[3] = {GPS_POS};
+				double _vel[3] = {GPS_VEL};
+				double _rot[3] = {GPS_ROT};
+
+				date.data.w = _date;
+				time.data.b = _time;
+				pos.data.d = _pos;
+				vel.data.d = _vel;
+				rot.data.d = _rot;
+
+				usb_tx(usb_buffer, usb_buffer_size, &date, message[0]);
+				usb_tx(usb_buffer, usb_buffer_size, &time, message[1]);
+				usb_tx(usb_buffer, usb_buffer_size, &pos, message[2]);
+				usb_tx(usb_buffer, usb_buffer_size, &vel, message[3]);
+				usb_tx(usb_buffer, usb_buffer_size, &rot, message[4]);
+
+				if(notification_count >= 3) {notification_count = 0; }
+			break;
+
+			default:
+				notification_count = 0;
+			break;
+		}
 
 		CDC_Transmit_FS(divider, strlen(divider));
 
@@ -366,7 +415,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART4)
 	{
-		b_tx_transfer_complete = true;
+		b_tx_transfer_complete = true; // Switch to task notifications in the future
 	}
 }
 
@@ -378,8 +427,15 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 	if(huart->Instance == UART4)
 	{
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
-		b_rx_transfer_complete = true;
+		b_rx_transfer_complete = true; // Switch to task notifications in the future
 	}
+}
+
+
+// Temporary
+void EXTI15_10_IRQHandler( void )
+{
+	HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13);
 }
 
 
@@ -387,6 +443,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == GPIO_PIN_13)
 	{
-		b_user_button_pressed = true;
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		vTaskNotifyGiveFromISR(GPSTaskHandle, &xHigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
 }

@@ -105,11 +105,13 @@ struct
 	NEDVector3 rotation;
 	UTCDate utc_date;
 	UTCTime utc_time;
+	byte device_id[5];
 }typedef GPSDataStruct;
 
 extern GPSParsedDataStruct GPS_Parsed_Data;
 extern GPSDataStruct GPS_Data;
 
-GPSDataStruct decode_nav(GPSParsedDataStruct *gpds);
+void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds);
+void decode_sec(GPSParsedDataStruct *gpds, GPSDataStruct *gds);
 
 #endif /* INC_GPS_H_ */

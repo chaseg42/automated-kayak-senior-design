@@ -18,6 +18,7 @@
 
 static int construct_message(char *buffer, const int buffer_size, ValueTypeDef *data, const char *message);
 static int construct_message_byte(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i);
+static int construct_message_byte_as_hex(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i);
 static int construct_message_word(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i);
 static int construct_message_double(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i);
 
@@ -46,7 +47,11 @@ static int construct_message(char *buffer, const int buffer_size, ValueTypeDef *
 		{
 			case FORMAT_GENERIC:
 				// TODO: Implement generic functionality
-				// size += construct_message_word(data, size, buffer, sizeof(buffer), i);
+				if(data->type == TYPE_BYTE)
+				{
+					size += construct_message_byte_as_hex(data, size, buffer, buffer_size, i);
+					size += snprintf(buffer + size, buffer_size - size, " ");
+				}
 				break;
 
 			case FORMAT_DATE:
@@ -92,6 +97,12 @@ static int construct_message(char *buffer, const int buffer_size, ValueTypeDef *
 static int construct_message_byte(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i)
 {
 	return snprintf(buffer + message_size, buffer_size - message_size, "%u", data->data.b[i]);
+}
+
+
+static int construct_message_byte_as_hex(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i)
+{
+	return snprintf(buffer + message_size, buffer_size - message_size, "0x%x", data->data.b[i]);
 }
 
 static int construct_message_word(ValueTypeDef *data, int message_size, char *buffer, const int buffer_size, size_t i)
