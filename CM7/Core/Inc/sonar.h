@@ -17,8 +17,8 @@ typedef struct {
     bool new_distance_flag;
 } Sonar_t;
 
-extern Sonar_t sonar5;
-extern Sonar_t sonar7;
+extern Sonar_t sonar5; // Sonar on UART5
+extern Sonar_t sonar7; // Sonar on UART7
 
 bool Sonar_uartToDistance(UART_HandleTypeDef *huart, Sonar_t *sonar);
 

@@ -27,6 +27,8 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "sonar.h"
+#include "tim.h"
+#include "adc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +57,13 @@ const osThreadAttr_t SonarTask_attributes = {
   .stack_size = 2048 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for MotorControlTas */
+osThreadId_t MotorControlTasHandle;
+const osThreadAttr_t MotorControlTas_attributes = {
+  .name = "MotorControlTas",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for HeartbeatTimer */
 osTimerId_t HeartbeatTimerHandle;
 const osTimerAttr_t HeartbeatTimer_attributes = {
@@ -67,6 +76,7 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void StartSonarTask(void *argument);
+void StartMotorControlTask(void *argument);
 void HeartbeatCallback(void *argument);
 
 extern void MX_USB_DEVICE_Init(void);
@@ -105,6 +115,9 @@ void MX_FREERTOS_Init(void) {
   /* Create the thread(s) */
   /* creation of SonarTask */
   SonarTaskHandle = osThreadNew(StartSonarTask, NULL, &SonarTask_attributes);
+
+  /* creation of MotorControlTas */
+  MotorControlTasHandle = osThreadNew(StartMotorControlTask, NULL, &MotorControlTas_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -153,7 +166,9 @@ void StartSonarTask(void *argument)
 
         char buffer[100];
         // Construct the message
-        int message_size = snprintf(buffer, 100, "Distance detected: %d cm\r\n", (int)sonar5.distance);
+        int dist_int = (int)sonar5.distance;
+        int dist_frac = (int)((sonar5.distance - dist_int) * 10);
+        int message_size = snprintf(buffer, 100, "Distance detected: %d.%d cm\r\n", dist_int, dist_frac);
         
         // Transmit the constructed message
         CDC_Transmit_FS((char *)buffer, message_size);
@@ -166,6 +181,31 @@ void StartSonarTask(void *argument)
     osDelay(250);
   }
   /* USER CODE END StartSonarTask */
+}
+
+/* USER CODE BEGIN Header_StartMotorControlTask */
+/**
+* @brief Function implementing the MotorControlTas thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMotorControlTask */
+void StartMotorControlTask(void *argument)
+{
+  /* USER CODE BEGIN StartMotorControlTask */
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  /* Infinite loop */
+  for(;;)
+  {
+    HAL_ADC_Start(&hadc3);
+    HAL_ADC_PollForConversion(&hadc3, 20); // TODO Use an interrupt instead
+    uint16_t adc_result = HAL_ADC_GetValue(&hadc3);
+    float new_arr = 10000 * ((65535 - adc_result) / 65535.0f); // 20000 is ARR, 16 bit adc
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, new_arr);
+
+    osDelay(100);
+  }
+  /* USER CODE END StartMotorControlTask */
 }
 
 /* HeartbeatCallback function */
