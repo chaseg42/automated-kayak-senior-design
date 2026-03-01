@@ -29,6 +29,7 @@
 #include "sonar.h"
 #include "tim.h"
 #include "adc.h"
+#include "UI.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,7 +55,7 @@
 osThreadId_t SonarTaskHandle;
 const osThreadAttr_t SonarTask_attributes = {
   .name = "SonarTask",
-  .stack_size = 2048 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for MotorControlTas */
@@ -62,6 +63,13 @@ osThreadId_t MotorControlTasHandle;
 const osThreadAttr_t MotorControlTas_attributes = {
   .name = "MotorControlTas",
   .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for DetermineStateT */
+osThreadId_t DetermineStateTHandle;
+const osThreadAttr_t DetermineStateT_attributes = {
+  .name = "DetermineStateT",
+  .stack_size = 3000 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for HeartbeatTimer */
@@ -77,6 +85,7 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
 
 void StartSonarTask(void *argument);
 void StartMotorControlTask(void *argument);
+void StartDetermineStateTask(void *argument);
 void HeartbeatCallback(void *argument);
 
 extern void MX_USB_DEVICE_Init(void);
@@ -119,6 +128,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of MotorControlTas */
   MotorControlTasHandle = osThreadNew(StartMotorControlTask, NULL, &MotorControlTas_attributes);
 
+  /* creation of DetermineStateT */
+  DetermineStateTHandle = osThreadNew(StartDetermineStateTask, NULL, &DetermineStateT_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -139,7 +151,7 @@ void MX_FREERTOS_Init(void) {
 void StartSonarTask(void *argument)
 {
   /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
+  // MX_USB_DEVICE_Init();
   /* USER CODE BEGIN StartSonarTask */
   
   // Begin waiting for end of data to fire interrupt
@@ -164,14 +176,14 @@ void StartSonarTask(void *argument)
 
         // TODO send the data somewhere meaningful
 
-        char buffer[100];
-        // Construct the message
-        int dist_int = (int)sonar5.distance;
-        int dist_frac = (int)((sonar5.distance - dist_int) * 10);
-        int message_size = snprintf(buffer, 100, "Distance detected: %d.%d cm\r\n", dist_int, dist_frac);
+        // char buffer[100];
+        // // Construct the message
+        // int dist_int = (int)sonar5.distance;
+        // int dist_frac = (int)((sonar5.distance - dist_int) * 10);
+        // int message_size = snprintf(buffer, 100, "Distance detected: %d.%d cm\r\n", dist_int, dist_frac);
         
-        // Transmit the constructed message
-        CDC_Transmit_FS((char *)buffer, message_size);
+        // // Transmit the constructed message
+        // CDC_Transmit_FS((char *)buffer, message_size);
     }
     if (sonar7.new_distance_flag == true)
     {
@@ -200,12 +212,53 @@ void StartMotorControlTask(void *argument)
     HAL_ADC_Start(&hadc3);
     HAL_ADC_PollForConversion(&hadc3, 20); // TODO Use an interrupt instead
     uint16_t adc_result = HAL_ADC_GetValue(&hadc3);
-    float new_arr = 10000 * ((65535 - adc_result) / 65535.0f); // 20000 is ARR, 16 bit adc
+    float new_arr = 10000 * ((65535 - adc_result) / 65535.0f); // 10000 is ARR, 16 bit adc
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, new_arr);
 
     osDelay(100);
   }
   /* USER CODE END StartMotorControlTask */
+}
+
+/* USER CODE BEGIN Header_StartDetermineStateTask */
+/**
+* @brief Function implementing the DetermineStateT thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDetermineStateTask */
+void StartDetermineStateTask(void *argument)
+{
+  /* USER CODE BEGIN StartDetermineStateTask */
+  // Only here for UI testing
+  // When enabled set heap for FreeRTOS to 2048 for this task
+  // When disabled make sure to return heap back to 128
+  MX_USB_DEVICE_Init();
+
+  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 3) != HAL_OK) {
+	  while(1);
+  }
+  /* Infinite loop */
+  for(;;)
+  {
+    if (ui_state.new_data_flag == true) // TODO use a notification instead
+    {
+      ui_state.new_data_flag = false;
+
+      char buffer[100];
+      // Construct the message
+      int mode = (int)ui_state.mode;
+      int dir = ui_state.direction_to_turn;
+      int speed = ui_state.speed;
+
+      int message_size = snprintf(buffer, 100, "Mode: %s | Direction: %s | Speed: %d\r\n", mode_str[mode], dir_str[dir], speed);
+
+      // Transmit the constructed message
+      CDC_Transmit_FS((char *)buffer, message_size);
+    }
+    osDelay(100);
+  }
+  /* USER CODE END StartDetermineStateTask */
 }
 
 /* HeartbeatCallback function */
@@ -218,7 +271,9 @@ void HeartbeatCallback(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-// TODO move this to a place that makes more sense
-
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+    // breakpoint here
+    while(1);
+}
 /* USER CODE END Application */
 

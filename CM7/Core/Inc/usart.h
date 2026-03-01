@@ -30,6 +30,7 @@ extern "C" {
 
 /* USER CODE BEGIN Includes */
 #include "sonar.h"
+#include "UI.h"
 /* USER CODE END Includes */
 
 extern UART_HandleTypeDef huart4;
@@ -37,6 +38,8 @@ extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart5;
 
 extern UART_HandleTypeDef huart7;
+
+extern UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN Private defines */
 extern uint8_t UART5_rx_data[4];
@@ -46,6 +49,7 @@ extern uint8_t UART7_rx_data[4];
 void MX_UART4_Init(void);
 void MX_UART5_Init(void);
 void MX_UART7_Init(void);
+void MX_USART6_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
