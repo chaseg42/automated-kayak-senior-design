@@ -30,6 +30,9 @@
 #include "tim.h"
 #include "adc.h"
 #include "UI.h"
+#include "dma.h"
+#include "gps.h"
+#include "ubx.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -257,10 +260,52 @@ void StartDetermineStateTask(void *argument)
 void StartGPSTask(void *argument)
 {
   /* USER CODE BEGIN StartGPSTask */
+
+  //	byte UART4_rxBuffer[256] = {0};
+		UBXFrame_Typedef UBXFrame;
+		UBXStatus ubx_status;
+		HAL_StatusTypeDef uart4_status;
+	//	GPS_Data_Struct GPS_Data;
+
+		// Note: DMA transferring does not currently work. This does, however.
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
+
+		// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
+		TickType_t poll_time = configTICK_RATE_HZ;
+		TickType_t current_ticks = 0;
+
+		// Goal: We want to request GPS data continuously when the receiver is ready.
+		// TODO: Indicate to the user when an error occurs in the rx/tx loop
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    			TickType_t ticks = xTaskGetTickCount();
+
+	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+	//
+	//		while(!b_tx_transfer_complete);
+	//		b_tx_transfer_complete = false;
+
+			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+			while(!b_tx_transfer_complete);
+			b_tx_transfer_complete = false;
+
+			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+			b_rx_transfer_complete = false;
+
+			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+			if(ubx_status != UBX_OK) { continue; } // Bail
+
+			// Decode information
+			decode_nav(&GPS_Parsed_Data, &GPS_Data);
+
+			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
+
+			while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
   }
   /* USER CODE END StartGPSTask */
 }

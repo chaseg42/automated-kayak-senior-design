@@ -31,6 +31,7 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 #include "sonar.h"
 #include "UI.h"
+#include "gps.h"
 /* USER CODE END Includes */
 
 extern UART_HandleTypeDef huart4;

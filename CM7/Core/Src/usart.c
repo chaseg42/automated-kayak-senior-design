@@ -498,6 +498,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 /* USER CODE BEGIN 1 */
 
+// Used for Sonar and UI
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == UART5)
@@ -516,6 +517,26 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     ui_state.new_data_flag = true;
     HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 3);
   }
+}
+
+// Used for GPS
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == UART4)
+	{
+		b_tx_transfer_complete = true;
+	}
+}
+
+// Used for GPS
+// Handle data reception in this callback instead of the UART4 IRQ
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+	if(huart->Instance == UART4)
+	{
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
+		b_rx_transfer_complete = true;
+	}
 }
 
 /* USER CODE END 1 */

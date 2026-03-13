@@ -31,6 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdint.h>
 #include <stdbool.h>
 /* USER CODE END Includes */
 
@@ -59,7 +60,9 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-
+#define byte uint8_t
+#define word uint16_t
+#define GPS_RX_BUFFER_SIZE 256
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
