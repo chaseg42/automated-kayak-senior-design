@@ -69,7 +69,14 @@ const osThreadAttr_t MotorControlTas_attributes = {
 osThreadId_t DetermineStateTHandle;
 const osThreadAttr_t DetermineStateT_attributes = {
   .name = "DetermineStateT",
-  .stack_size = 3000 * 4,
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for GPSTask */
+osThreadId_t GPSTaskHandle;
+const osThreadAttr_t GPSTask_attributes = {
+  .name = "GPSTask",
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for HeartbeatTimer */
@@ -86,9 +93,9 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
 void StartSonarTask(void *argument);
 void StartMotorControlTask(void *argument);
 void StartDetermineStateTask(void *argument);
+void StartGPSTask(void *argument);
 void HeartbeatCallback(void *argument);
 
-extern void MX_USB_DEVICE_Init(void);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
@@ -131,6 +138,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of DetermineStateT */
   DetermineStateTHandle = osThreadNew(StartDetermineStateTask, NULL, &DetermineStateT_attributes);
 
+  /* creation of GPSTask */
+  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -150,8 +160,6 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartSonarTask */
 void StartSonarTask(void *argument)
 {
-  /* init code for USB_DEVICE */
-  // MX_USB_DEVICE_Init();
   /* USER CODE BEGIN StartSonarTask */
   
   // Begin waiting for end of data to fire interrupt
@@ -175,15 +183,6 @@ void StartSonarTask(void *argument)
         sonar5.new_distance_flag = false;
 
         // TODO send the data somewhere meaningful
-
-        // char buffer[100];
-        // // Construct the message
-        // int dist_int = (int)sonar5.distance;
-        // int dist_frac = (int)((sonar5.distance - dist_int) * 10);
-        // int message_size = snprintf(buffer, 100, "Distance detected: %d.%d cm\r\n", dist_int, dist_frac);
-        
-        // // Transmit the constructed message
-        // CDC_Transmit_FS((char *)buffer, message_size);
     }
     if (sonar7.new_distance_flag == true)
     {
@@ -230,10 +229,8 @@ void StartMotorControlTask(void *argument)
 void StartDetermineStateTask(void *argument)
 {
   /* USER CODE BEGIN StartDetermineStateTask */
-  // Only here for UI testing
-  // When enabled set heap for FreeRTOS to 2048 for this task
-  // When disabled make sure to return heap back to 128
-  MX_USB_DEVICE_Init();
+
+  osDelay(6000); // Wait for USB to setup
 
   if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 3) != HAL_OK) {
 	  while(1);
@@ -244,21 +241,28 @@ void StartDetermineStateTask(void *argument)
     if (ui_state.new_data_flag == true) // TODO use a notification instead
     {
       ui_state.new_data_flag = false;
-
-      char buffer[100];
-      // Construct the message
-      int mode = (int)ui_state.mode;
-      int dir = ui_state.direction_to_turn;
-      int speed = ui_state.speed;
-
-      int message_size = snprintf(buffer, 100, "Mode: %s | Direction: %s | Speed: %d\r\n", mode_str[mode], dir_str[dir], speed);
-
-      // Transmit the constructed message
-      CDC_Transmit_FS((char *)buffer, message_size);
     }
     osDelay(100);
   }
   /* USER CODE END StartDetermineStateTask */
+}
+
+/* USER CODE BEGIN Header_StartGPSTask */
+/**
+* @brief Function implementing the GPSTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartGPSTask */
+void StartGPSTask(void *argument)
+{
+  /* USER CODE BEGIN StartGPSTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartGPSTask */
 }
 
 /* HeartbeatCallback function */
