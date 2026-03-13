@@ -22,60 +22,38 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
+
+
 #include "dma.h"
 #include "usart.h"
 #include "gps.h"
 #include "ubx.h"
-#include "usb_device.h"
-#include "usb.h"
 #include <stdbool.h>
 
-// TODO: Consider splitting tasks into subsystem task files to reduce file complexity
-
-#define THREAD_STACK_SIZE 512 // In increments of 128
 #define GPS_RX_BUFFER_SIZE 256
-#define TEST_GPS
 
-/*****************************************
- *
- * 				DEBUG
- *
- *****************************************/
-osTimerId_t HeartbeatTimerHandle;
-const osTimerAttr_t HeartbeatTimer_attributes = {
-  .name = "HeartbeatTimer"
-};
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
 
-osThreadId_t SerialTaskHandle;
-const osThreadAttr_t SerialTask_attributes = {
-                                            .name = "SerialTask",
-                                            .stack_size = THREAD_STACK_SIZE*16,
-                                            .priority = (osPriority_t) osPriorityNormal,
-                                          };
+/* USER CODE END Includes */
 
-/*****************************************
- *
- * 				SONAR
- *
- *****************************************/
-osThreadId_t SonarTaskHandle;
-const osThreadAttr_t SonarTask_attributes = {
-                                              .name = "SonarTask",
-                                              .stack_size = THREAD_STACK_SIZE,
-                                              .priority = (osPriority_t) osPriorityNormal,
-                                            };
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
 
-/*****************************************
- *
- * 				GPS
- *
- *****************************************/
-osThreadId_t GPSTaskHandle;
-const osThreadAttr_t GPSTask_attributes = {
-                                            .name = "GPSTask",
-                                            .stack_size = THREAD_STACK_SIZE,
-                                            .priority = (osPriority_t) osPriorityNormal,
-                                          };
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+/* USER CODE BEGIN Variables */
 /*****************************************
  *
  * 				GPS Globals
@@ -86,18 +64,51 @@ GPSParsedDataStruct GPS_Parsed_Data;
 GPSDataStruct GPS_Data;
 bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 
-
-
+/* USER CODE END Variables */
+/* Definitions for SonarTask */
+osThreadId_t SonarTaskHandle;
+const osThreadAttr_t SonarTask_attributes = {
+  .name = "SonarTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for MotorControlTas */
+osThreadId_t MotorControlTasHandle;
+const osThreadAttr_t MotorControlTas_attributes = {
+  .name = "MotorControlTas",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for DetermineStateT */
+osThreadId_t DetermineStateTHandle;
+const osThreadAttr_t DetermineStateT_attributes = {
+  .name = "DetermineStateT",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for GPSTask */
+osThreadId_t GPSTaskHandle;
+const osThreadAttr_t GPSTask_attributes = {
+  .name = "GPSTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for HeartbeatTimer */
+osTimerId_t HeartbeatTimerHandle;
+const osTimerAttr_t HeartbeatTimer_attributes = {
+  .name = "HeartbeatTimer"
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void HeartbeatCallback(void *argument);
 void StartSonarTask(void *argument);
-void GPSTask(void *argument);
-void SerialTask(void *argument);
+void StartMotorControlTask(void *argument);
+void StartDetermineStateTask(void *argument);
+void StartGPSTask(void *argument);
+void HeartbeatCallback(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -106,46 +117,54 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   * @param  None
   * @retval None
   */
-void MX_FREERTOS_Init(void)
-{
+void MX_FREERTOS_Init(void) {
+  /* USER CODE BEGIN Init */
 
-	// Initialization
+  /* USER CODE END Init */
 
-	// Mutexes
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
 
-	// Semaphores
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
 
-	// Timers
-	HeartbeatTimerHandle = osTimerNew(HeartbeatCallback, osTimerPeriodic, NULL, &HeartbeatTimer_attributes);
+  /* Create the timer(s) */
+  /* creation of HeartbeatTimer */
+  HeartbeatTimerHandle = osTimerNew(HeartbeatCallback, osTimerPeriodic, NULL, &HeartbeatTimer_attributes);
 
-	// Queues
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
 
-	// Threads
-//	SonarTaskHandle = osThreadNew(StartSonarTask, NULL, &SonarTask_attributes);
-	GPSTaskHandle = osThreadNew(GPSTask, NULL, &GPSTask_attributes);
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
 
-	#ifdef TEST_GPS
-	SerialTaskHandle = osThreadNew(SerialTask, NULL, &SerialTask_attributes);
-	#endif
+  /* Create the thread(s) */
+  /* creation of SonarTask */
+  SonarTaskHandle = osThreadNew(StartSonarTask, NULL, &SonarTask_attributes);
 
+  /* creation of MotorControlTas */
+  MotorControlTasHandle = osThreadNew(StartMotorControlTask, NULL, &MotorControlTas_attributes);
 
-	// Events
+  /* creation of DetermineStateT */
+  DetermineStateTHandle = osThreadNew(StartDetermineStateTask, NULL, &DetermineStateT_attributes);
+
+  /* creation of GPSTask */
+  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
 
 }
 
-
-/* HeartbeatCallback function */
-void HeartbeatCallback(void *argument)
-{
-	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
-}
-
-
-/*****************************************
- *
- * 				SONAR
- *
- *****************************************/
 /* USER CODE BEGIN Header_StartSonarTask */
 /**
   * @brief  Function implementing the SonarTask thread.
@@ -164,49 +183,80 @@ void StartSonarTask(void *argument)
 ////		osDelay(500);
 //	}
   /* USER CODE END StartSonarTask */
-	vTaskDelete( NULL );
 }
 
-
-/*****************************************
- *
- * 				GPS
- *
- *****************************************/
-/* USER CODE BEGIN Header_GPSTask */
+/* USER CODE BEGIN Header_StartMotorControlTask */
 /**
-  * @brief  Function implementing the GPSTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_GPSTask */
-void GPSTask(void *argument)
+* @brief Function implementing the MotorControlTas thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMotorControlTask */
+void StartMotorControlTask(void *argument)
 {
-//	byte UART4_rxBuffer[256] = {0};
-	UBXFrame_Typedef UBXFrame;
-	UBXStatus ubx_status;
-	HAL_StatusTypeDef uart4_status;
-//	GPS_Data_Struct GPS_Data;
+  /* USER CODE BEGIN StartMotorControlTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartMotorControlTask */
+}
 
-	// Note: DMA transferring does not currently work. This does, however.
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
+/* USER CODE BEGIN Header_StartDetermineStateTask */
+/**
+* @brief Function implementing the DetermineStateT thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDetermineStateTask */
+void StartDetermineStateTask(void *argument)
+{
+  /* USER CODE BEGIN StartDetermineStateTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartDetermineStateTask */
+}
 
-	// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
-	TickType_t poll_time = configTICK_RATE_HZ;
-	TickType_t current_ticks = 0;
+/* USER CODE BEGIN Header_StartGPSTask */
+/**
+* @brief Function implementing the GPSTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartGPSTask */
+void StartGPSTask(void *argument)
+{
+	//	byte UART4_rxBuffer[256] = {0};
+		UBXFrame_Typedef UBXFrame;
+		UBXStatus ubx_status;
+		HAL_StatusTypeDef uart4_status;
+	//	GPS_Data_Struct GPS_Data;
 
-	uint32_t notification_count = 0;
+		// Note: DMA transferring does not currently work. This does, however.
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
 
-	// Goal: We want to request GPS data continuously when the receiver is ready.
-	// TODO: Indicate to the user when an error occurs in the rx/tx loop
-	while(1)
-	{
-		notification_count += ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
+		TickType_t poll_time = configTICK_RATE_HZ;
+		TickType_t current_ticks = 0;
 
-		TickType_t ticks = xTaskGetTickCount();
+		// Goal: We want to request GPS data continuously when the receiver is ready.
+		// TODO: Indicate to the user when an error occurs in the rx/tx loop
+		while(1)
+		{
 
-		#ifdef TEST_AUX
-			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+			TickType_t ticks = xTaskGetTickCount();
+
+	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
+	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+	//
+	//		while(!b_tx_transfer_complete);
+	//		b_tx_transfer_complete = false;
+
+			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
 			while(!b_tx_transfer_complete);
@@ -214,208 +264,32 @@ void GPSTask(void *argument)
 
 			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
 			b_rx_transfer_complete = false;
-		#endif
 
-		#ifdef TEST_GPS
-		switch(notification_count)
-		{
-			case 1:
-				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
-				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+			if(ubx_status != UBX_OK) { continue; } // Bail
 
-				while(!b_tx_transfer_complete);
-				b_tx_transfer_complete = false;
+			// Decode information
+			decode_nav(&GPS_Parsed_Data, &GPS_Data);
 
-				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-				b_rx_transfer_complete = false;
+			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 
-				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-				if(ubx_status != UBX_OK) { continue; } // Bail
-
-				decode_sec(&GPS_Parsed_Data, &GPS_Data);
-			break;
-
-			case 2 ... 3:
-				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
-				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-
-				while(!b_tx_transfer_complete);
-				b_tx_transfer_complete = false;
-
-				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-				b_rx_transfer_complete = false;
-
-				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-				if(ubx_status != UBX_OK) { continue; } // Bail
-
-				uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_att, sizeof(ubx_tx_poll_att));
-				if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-
-				while(!b_tx_transfer_complete);
-				b_tx_transfer_complete = false;
-
-				while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-				b_rx_transfer_complete = false;
-
-				ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-				if(ubx_status != UBX_OK) { continue; } // Bail
-
-				decode_nav(&GPS_Parsed_Data, &GPS_Data);
-
-				if(notification_count >= 3) {notification_count = 0; }
-			break;
-
-			default:
-				notification_count = 0;
-			break;
+			while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
 		}
-
-		// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
-		#endif
-
-		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
-
-		xTaskNotifyGive(SerialTaskHandle);
-
-	}
-
-	vTaskDelete( NULL );
 }
 
-/*****************************************
- *
- * 				SERIAL DEBUG
- *
- *****************************************/
-#define GPS_TIME GPS_Data.utc_time.hour, GPS_Data.utc_time.min, GPS_Data.utc_time.sec
-#define GPS_DATE GPS_Data.utc_date.month, GPS_Data.utc_date.day, GPS_Data.utc_date.year
-#define GPS_VEL	 GPS_Data.velocity.N, GPS_Data.velocity.E, GPS_Data.velocity.D
-#define GPS_POS	 GPS_Data.world_position.N, GPS_Data.world_position.E, GPS_Data.world_position.D
-#define GPS_ROT  GPS_Data.rotation.N, GPS_Data.rotation.E, GPS_Data.rotation.D
-#define GPS_ID   GPS_Data.device_id
-
-void SerialTask(void *argument)
+/* HeartbeatCallback function */
+void HeartbeatCallback(void *argument)
 {
-	TickType_t poll_time = configTICK_RATE_HZ * 2;
-	TickType_t current_ticks = 0;
-	MX_USB_DEVICE_Init(); //
+  /* USER CODE BEGIN HeartbeatCallback */
 
-	char usb_buffer[128] = {0};
-	const int usb_buffer_size = sizeof(usb_buffer); // Do not change this during runtime
-
-	ValueTypeDef date =
-	{
-		.type = TYPE_WORD,
-		.data_count = 3,
-		.format = FORMAT_DATE,
-		.data.w = NULL
-	};
-
-
-	ValueTypeDef time =
-	{
-		.type = TYPE_BYTE,
-		.data_count = 3,
-		.format = FORMAT_TIME,
-		.data.b = NULL
-	};
-
-	ValueTypeDef pos =
-	{
-		.type = TYPE_DOUBLE,
-		.data_count = 3,
-		.format = FORMAT_VECTOR,
-		.data.d = NULL
-	};
-
-	ValueTypeDef vel =
-	{
-		.type = TYPE_DOUBLE,
-		.data_count = 3,
-		.format = FORMAT_VECTOR,
-		.data.d = NULL
-	};
-
-	ValueTypeDef rot =
-	{
-		.type = TYPE_DOUBLE,
-		.data_count = 3,
-		.format = FORMAT_VECTOR,
-		.data.d = NULL
-	};
-
-
-	ValueTypeDef id =
-	{
-		.type = TYPE_BYTE,
-		.data_count = 5,
-		.format = FORMAT_GENERIC,
-		.data.b = NULL
-	};
-
-	const char *message[] = {"Date:", "Time:", "Position:", "Velocity:", "Rotation:", "ID:"};
-	const char *divider = "========================================\r\n";
-
-	uint32_t notification_count = 0;
-
-	while(1)
-	{
-
-		TickType_t ticks = xTaskGetTickCount();
-
-		notification_count += ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-		switch(notification_count)
-		{
-			case 1:
-				byte _id[5];
-				memcpy(_id, GPS_ID, sizeof(GPS_ID));
-				id.data.b = _id;
-				usb_tx(usb_buffer, usb_buffer_size, &id, message[5]);
-			break;
-
-			case 2 ... 3:
-				word _date[3] = {GPS_DATE};
-				byte _time[3] = {GPS_TIME};
-				double _pos[3] = {GPS_POS};
-				double _vel[3] = {GPS_VEL};
-				double _rot[3] = {GPS_ROT};
-
-				date.data.w = _date;
-				time.data.b = _time;
-				pos.data.d = _pos;
-				vel.data.d = _vel;
-				rot.data.d = _rot;
-
-				usb_tx(usb_buffer, usb_buffer_size, &date, message[0]);
-				usb_tx(usb_buffer, usb_buffer_size, &time, message[1]);
-				usb_tx(usb_buffer, usb_buffer_size, &pos, message[2]);
-				usb_tx(usb_buffer, usb_buffer_size, &vel, message[3]);
-				usb_tx(usb_buffer, usb_buffer_size, &rot, message[4]);
-
-				if(notification_count >= 3) {notification_count = 0; }
-			break;
-
-			default:
-				notification_count = 0;
-			break;
-		}
-
-		CDC_Transmit_FS(divider, strlen(divider));
-
-		while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
-	}
-
-	vTaskDelete( NULL );
-
+  /* USER CODE END HeartbeatCallback */
 }
-
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART4)
 	{
-		b_tx_transfer_complete = true; // Switch to task notifications in the future
+		b_tx_transfer_complete = true;
 	}
 }
 
@@ -427,24 +301,12 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 	if(huart->Instance == UART4)
 	{
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
-		b_rx_transfer_complete = true; // Switch to task notifications in the future
+		b_rx_transfer_complete = true;
 	}
 }
 
+/* Private application code --------------------------------------------------*/
+/* USER CODE BEGIN Application */
 
-// Temporary
-void EXTI15_10_IRQHandler( void )
-{
-	HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13);
-}
+/* USER CODE END Application */
 
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	if(GPIO_Pin == GPIO_PIN_13)
-	{
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-		vTaskNotifyGiveFromISR(GPSTaskHandle, &xHigherPriorityTaskWoken);
-		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-	}
-}

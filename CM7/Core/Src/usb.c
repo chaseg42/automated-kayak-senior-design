@@ -13,7 +13,6 @@
 **/
 
 #include "usb.h"
-#include "usb_device.h"
 #include "ubx.h" // Move the clear buffer out of this header
 
 static int construct_message(char *buffer, const int buffer_size, ValueTypeDef *data, const char *message);

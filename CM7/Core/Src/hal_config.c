@@ -19,7 +19,6 @@
 #include "dma.h"
 #include "usart.h"
 #include "gpio.h"
-#include "usb_device.h"
 
 
 /* DUAL_CORE_BOOT_SYNC_SEQUENCE: Define for dual core boot synchronization    */
