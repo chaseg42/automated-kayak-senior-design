@@ -28,7 +28,6 @@
 #include "usart.h"
 #include "sonar.h"
 #include "tim.h"
-#include "adc.h"
 #include "UI.h"
 #include "dma.h"
 #include "gps.h"
