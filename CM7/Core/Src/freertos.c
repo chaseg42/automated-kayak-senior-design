@@ -19,11 +19,9 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
-#include "queue.h"
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usart.h"
@@ -33,6 +31,7 @@
 #include "dma.h"
 #include "gps.h"
 #include "ubx.h"
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -240,6 +239,8 @@ void StartMotorControlTask(void *argument)
   Sonar_t latest_sonar = sonar5;
   bool sonar_data_valid = false;
 
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
+
   operatingMode_t current_mode = MODE_DISABLE;
   bool mode_entry = true;
   bool startup_steps_done = false;
@@ -248,10 +249,10 @@ void StartMotorControlTask(void *argument)
   direction_t desired_drive_direction = FORWARD;
   direction_t desired_shore_side = RIGHT;
 
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); // 45 degree
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2); // 135 degree
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3); // 225 degree
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4); // 315 degree
 
   /* Infinite loop */
   for(;;)
@@ -293,6 +294,7 @@ void StartMotorControlTask(void *argument)
           desired_speed_cmd = 0;
           mode_entry = false;
         }
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
         motor_45_speed_cmd = 0;
         motor_135_speed_cmd = 0;
         motor_225_speed_cmd = 0;
@@ -308,6 +310,8 @@ void StartMotorControlTask(void *argument)
           // TODO get GPS heading notification and save desired heading
           mode_entry = false;
         }
+
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
 
         if (got_ui_update)
         {
@@ -347,6 +351,8 @@ void StartMotorControlTask(void *argument)
           mode_entry = false;
         }
 
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
+
         // TODO:
         //  Check new heading and correct when >=15 deg away from desired
         //  Check new location and correct when >=1 meter away from desired
@@ -364,6 +370,8 @@ void StartMotorControlTask(void *argument)
           // TODO wait for radar data to save shoreline
           mode_entry = false;
         }
+
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
 
         if (got_ui_update)
         {
@@ -396,10 +404,17 @@ void StartMotorControlTask(void *argument)
           // TODO use heading error >=15 deg to compute correction
         }
         break;
-
+      case MOTOR_OVERRIDE:
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
+        motor_45_speed_cmd = latest_ui.override_speed45;
+        motor_135_speed_cmd = latest_ui.override_speed135;
+        motor_225_speed_cmd = latest_ui.override_speed225;
+        motor_315_speed_cmd = latest_ui.override_speed315;
+        break;
       default:
         current_mode = MODE_DISABLE;
         mode_entry = true;
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
         motor_45_speed_cmd = 0;
         motor_135_speed_cmd = 0;
         motor_225_speed_cmd = 0;
@@ -428,7 +443,7 @@ void StartDetermineStateTask(void *argument)
 
   osDelay(6000); // Wait for USB to setup
 
-  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 3) != HAL_OK) {
+  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7) != HAL_OK) {
 	  while(1);
   }
   /* Infinite loop */
