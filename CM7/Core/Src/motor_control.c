@@ -24,7 +24,8 @@
 #define ANCHOR_HEADING_OFF_DEG           5.0f
 #define ANCHOR_POSITION_ON_M             2.0f
 #define ANCHOR_POSITION_OFF_M            0.5f
-#define ANCHOR_CORRECTION_SPEED_0_100    80U
+#define ANCHOR_POSITION_SPEED_MAX_0_100  80U
+#define ANCHOR_POSITION_SPEED_MIN_0_100  20U
 
 #define GPS_METERS_PER_DEG_LAT           111111.0f
 #define GPS_DEG_TO_RAD                   0.01745329252f
@@ -129,6 +130,29 @@ static void GPS_CalculateOffsetMeters(double desired_lat, double desired_lon,
 
 	*north_m = (float)((current_lat - desired_lat) * GPS_METERS_PER_DEG_LAT);
 	*east_m = (float)((current_lon - desired_lon) * meters_per_deg_lon);
+}
+
+static uint8_t Anchor_ComputePositionSpeed(float distance_m)
+{
+	float distance_span = ANCHOR_POSITION_ON_M - ANCHOR_POSITION_OFF_M;
+	float ratio = 1.0f;
+	float speed_range = (float)(ANCHOR_POSITION_SPEED_MAX_0_100 - ANCHOR_POSITION_SPEED_MIN_0_100);
+
+	if (distance_span > 0.0f)
+	{
+		ratio = (distance_m - ANCHOR_POSITION_OFF_M) / distance_span;
+	}
+	if (ratio < 0.0f)
+	{
+		ratio = 0.0f;
+	}
+	else if (ratio > 1.0f)
+	{
+		ratio = 1.0f;
+	}
+
+	uint8_t speed_0_100 = (uint8_t)(ANCHOR_POSITION_SPEED_MIN_0_100 + (ratio * speed_range));
+	return Motor_MapSpeed0_100_to_PWM(speed_0_100);
 }
 
 void MotorControl_InitState(MotorControlState *state)
@@ -282,7 +306,8 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 															GPS_Data.world_position.N, GPS_Data.world_position.E,
 															&north_m, &east_m);
 		float distance_m = sqrtf((north_m * north_m) + (east_m * east_m));
-		uint8_t anchor_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_CORRECTION_SPEED_0_100);
+		uint8_t anchor_heading_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_POSITION_SPEED_MAX_0_100);
+		uint8_t anchor_position_speed_cmd = Anchor_ComputePositionSpeed(distance_m);
 
 		if (!state->anchor_heading_correction_active && (fabsf(heading_error_deg) > ANCHOR_HEADING_ON_DEG))
 		{
@@ -307,13 +332,13 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 			// Rotate in place to regain heading.
 			if (heading_error_deg > 0.0f)
 			{
-				motor_cmd->speed_45 = anchor_speed_cmd;
-				motor_cmd->speed_225 = anchor_speed_cmd;
+				motor_cmd->speed_45 = anchor_heading_speed_cmd;
+				motor_cmd->speed_225 = anchor_heading_speed_cmd;
 			}
 			else if (heading_error_deg < 0.0f)
 			{
-				motor_cmd->speed_135 = anchor_speed_cmd;
-				motor_cmd->speed_315 = anchor_speed_cmd;
+				motor_cmd->speed_135 = anchor_heading_speed_cmd;
+				motor_cmd->speed_315 = anchor_heading_speed_cmd;
 			}
 		}
 		else if (state->anchor_position_correction_active)
@@ -323,26 +348,26 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 			{
 				if (east_m > 0.0f)
 				{
-					motor_cmd->speed_225 = anchor_speed_cmd;
-					motor_cmd->speed_315 = anchor_speed_cmd;
+					motor_cmd->speed_225 = anchor_position_speed_cmd;
+					motor_cmd->speed_315 = anchor_position_speed_cmd;
 				}
 				else
 				{
-					motor_cmd->speed_45 = anchor_speed_cmd;
-					motor_cmd->speed_135 = anchor_speed_cmd;
+					motor_cmd->speed_45 = anchor_position_speed_cmd;
+					motor_cmd->speed_135 = anchor_position_speed_cmd;
 				}
 			}
 			else if (fabsf(north_m) > ANCHOR_POSITION_OFF_M)
 			{
 				if (north_m > 0.0f)
 				{
-					motor_cmd->speed_45 = anchor_speed_cmd;
-					motor_cmd->speed_315 = anchor_speed_cmd;
+					motor_cmd->speed_45 = anchor_position_speed_cmd;
+					motor_cmd->speed_315 = anchor_position_speed_cmd;
 				}
 				else
 				{
-					motor_cmd->speed_135 = anchor_speed_cmd;
-					motor_cmd->speed_225 = anchor_speed_cmd;
+					motor_cmd->speed_135 = anchor_position_speed_cmd;
+					motor_cmd->speed_225 = anchor_position_speed_cmd;
 				}
 			}
 		}
