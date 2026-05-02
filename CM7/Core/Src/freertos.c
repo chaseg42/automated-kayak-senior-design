@@ -171,7 +171,7 @@ void MX_FREERTOS_Init(void) {
   DetermineStateTHandle = osThreadNew(StartDetermineStateTask, NULL, &DetermineStateT_attributes);
 
   /* creation of GPSTask */
-  //GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
+  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -488,7 +488,7 @@ void StartGPSTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    			TickType_t ticks = xTaskGetTickCount();
+    		TickType_t ticks = xTaskGetTickCount();
 
 	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
 	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
@@ -499,11 +499,17 @@ void StartGPSTask(void *argument)
 			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-			while(!b_tx_transfer_complete);
-			b_tx_transfer_complete = false;
+			// Wait for the UART4 RX ISR to complete
+			xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
 
-			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-			b_rx_transfer_complete = false;
+			// Wait for UART4 RX ISR to complete
+			// xTaskNotifyWait(0x00, 0x02, NULL, portMAX_DELAY);
+
+
+
+
+//			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
+//			b_rx_transfer_complete = false;
 
 			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
 			if(ubx_status != UBX_OK) { continue; } // Bail
