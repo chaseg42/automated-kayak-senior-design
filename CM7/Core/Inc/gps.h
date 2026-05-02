@@ -78,7 +78,7 @@ struct
 struct
 {
 	double N;
-	double E;
+	double E; // rotation: heading
 	double D;
 }typedef NEDVector3; // Needs refactoring due to rotation addition
 

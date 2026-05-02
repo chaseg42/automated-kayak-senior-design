@@ -21,7 +21,10 @@
 #include "usart.h"
 
 /* USER CODE BEGIN 0 */
-
+#include "FreeRTOS.h"
+#include "task.h"
+#include "cmsis_os.h"
+extern osThreadId_t GPSTaskHandle;
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart4;
@@ -514,10 +517,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     ui_state.mode = (operatingMode_t)ui_state.rx_data[0];
     ui_state.direction_to_turn = (direction_t)ui_state.rx_data[1];
     ui_state.speed = ui_state.rx_data[2];
-    ui_state.override_speed45 = ui_state.rx_data[3];
-    ui_state.override_speed135 = ui_state.rx_data[4];
-    ui_state.override_speed225 = ui_state.rx_data[5];
-    ui_state.override_speed315 = ui_state.rx_data[6];
+    ui_state.override_speed45 = ui_state.rx_data[4];
+    ui_state.override_speed135 = ui_state.rx_data[5];
+    ui_state.override_speed225 = ui_state.rx_data[6];
+    ui_state.override_speed315 = ui_state.rx_data[3];
     ui_state.new_data_flag = true;
     HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7);
   }
@@ -528,7 +531,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART4)
 	{
-		b_tx_transfer_complete = true;
+		//BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	}
 }
 
@@ -538,8 +541,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
 	if(huart->Instance == UART4)
 	{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
-		b_rx_transfer_complete = true;
+		xTaskNotifyFromISR(GPSTaskHandle, 0x00, eNoAction, &xHigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
 }
 
