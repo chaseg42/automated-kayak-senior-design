@@ -543,4 +543,12 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 	}
 }
 
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART6)
+  {
+    HAL_UART_Abort(&huart6);  // Forces RxState back to Ready
+    HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7);
+  }
+}
 /* USER CODE END 1 */
