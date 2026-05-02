@@ -22,6 +22,7 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usart.h"
@@ -170,7 +171,7 @@ void MX_FREERTOS_Init(void) {
   DetermineStateTHandle = osThreadNew(StartDetermineStateTask, NULL, &DetermineStateT_attributes);
 
   /* creation of GPSTask */
-  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
+  //GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -440,8 +441,6 @@ void StartMotorControlTask(void *argument)
 void StartDetermineStateTask(void *argument)
 {
   /* USER CODE BEGIN StartDetermineStateTask */
-
-  osDelay(6000); // Wait for USB to setup
 
   if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7) != HAL_OK) {
 	  while(1);
