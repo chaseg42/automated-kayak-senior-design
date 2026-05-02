@@ -69,8 +69,7 @@ static uint8_t Motor_MapSpeed0_100_to_PWM(uint8_t speed_cmd_0_100)
 }
 
 static void Motor_ComputeQuadSpeed(uint8_t base_speed_cmd, direction_t turn_direction, uint8_t turn_delta_cmd,
-																	 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-																	 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd)
+										 motor_speed *motor_cmd)
 {
 	// Forward uses 135/225; reverse uses 45/315 with optional yaw bias.
 	int32_t motor_45 = 0;
@@ -100,10 +99,10 @@ static void Motor_ComputeQuadSpeed(uint8_t base_speed_cmd, direction_t turn_dire
 		}
 	}
 
-	*motor_45_speed_cmd = Motor_ClampSpeedCmd(motor_45);
-	*motor_135_speed_cmd = Motor_ClampSpeedCmd(motor_135);
-	*motor_225_speed_cmd = Motor_ClampSpeedCmd(motor_225);
-	*motor_315_speed_cmd = Motor_ClampSpeedCmd(motor_315);
+	motor_cmd->speed_45 = Motor_ClampSpeedCmd(motor_45);
+	motor_cmd->speed_135 = Motor_ClampSpeedCmd(motor_135);
+	motor_cmd->speed_225 = Motor_ClampSpeedCmd(motor_225);
+	motor_cmd->speed_315 = Motor_ClampSpeedCmd(motor_315);
 }
 
 static float GPS_NormalizeHeadingError(float heading_error_deg)
@@ -154,11 +153,10 @@ void MotorControl_InitState(MotorControlState *state)
 
 void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_ui_update,
 													 const UIdata *ui, bool sonar_data_valid, const Sonar_t *sonar,
-													 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-													 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+											 motor_speed *motor_cmd,
 													 bool *mode_entry_out)
 {
-	if ((state == NULL) || (ui == NULL) || (sonar == NULL))
+	if ((state == NULL) || (ui == NULL) || (sonar == NULL) || (motor_cmd == NULL))
 	{
 		return;
 	}
@@ -189,22 +187,16 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 		}
 	}
 
-	Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_drive_direction, 0,
-												 motor_45_speed_cmd, motor_135_speed_cmd,
-												 motor_225_speed_cmd, motor_315_speed_cmd);
+	Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_drive_direction, 0, motor_cmd);
 
 	// Sonar avoidance overrides heading stabilization in forward travel.
 	if ((state->desired_drive_direction != REVERSE) && sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM))
 	{
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_HARD_DELTA_CMD,
-													 motor_45_speed_cmd, motor_135_speed_cmd,
-													 motor_225_speed_cmd, motor_315_speed_cmd);
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_HARD_DELTA_CMD, motor_cmd);
 	}
 	else if ((state->desired_drive_direction != REVERSE) && sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_CAUTION_CM))
 	{
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_SOFT_DELTA_CMD,
-													 motor_45_speed_cmd, motor_135_speed_cmd,
-													 motor_225_speed_cmd, motor_315_speed_cmd);
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
 	}
 	else
 	{
@@ -229,15 +221,13 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 				if (state->desired_drive_direction == FORWARD)
 				{
 					// Forward: bias 135/225 pair to correct yaw.
-					Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, MOTOR_TURN_SOFT_DELTA_CMD,
-																 motor_45_speed_cmd, motor_135_speed_cmd,
-																 motor_225_speed_cmd, motor_315_speed_cmd);
+					Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
 				}
 				else
 				{
 					// Reverse: bias 45/315 pair to correct yaw.
-					int32_t motor_45 = *motor_45_speed_cmd;
-					int32_t motor_315 = *motor_315_speed_cmd;
+					int32_t motor_45 = motor_cmd->speed_45;
+					int32_t motor_315 = motor_cmd->speed_315;
 
 					if (correction_direction == RIGHT)
 					{
@@ -250,8 +240,8 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 						motor_315 += MOTOR_TURN_SOFT_DELTA_CMD;
 					}
 
-					*motor_45_speed_cmd = Motor_ClampSpeedCmd(motor_45);
-					*motor_315_speed_cmd = Motor_ClampSpeedCmd(motor_315);
+					motor_cmd->speed_45 = Motor_ClampSpeedCmd(motor_45);
+					motor_cmd->speed_315 = Motor_ClampSpeedCmd(motor_315);
 				}
 			}
 		}
@@ -264,11 +254,10 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 }
 
 void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
-														 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-														 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+									 motor_speed *motor_cmd,
 														 bool *mode_entry_out)
 {
-	if (state == NULL)
+	if ((state == NULL) || (motor_cmd == NULL))
 	{
 		return;
 	}
@@ -318,13 +307,13 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 			// Rotate in place to regain heading.
 			if (heading_error_deg > 0.0f)
 			{
-				*motor_45_speed_cmd = anchor_speed_cmd;
-				*motor_225_speed_cmd = anchor_speed_cmd;
+				motor_cmd->speed_45 = anchor_speed_cmd;
+				motor_cmd->speed_225 = anchor_speed_cmd;
 			}
 			else if (heading_error_deg < 0.0f)
 			{
-				*motor_135_speed_cmd = anchor_speed_cmd;
-				*motor_315_speed_cmd = anchor_speed_cmd;
+				motor_cmd->speed_135 = anchor_speed_cmd;
+				motor_cmd->speed_315 = anchor_speed_cmd;
 			}
 		}
 		else if (state->anchor_position_correction_active)
@@ -334,26 +323,26 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 			{
 				if (east_m > 0.0f)
 				{
-					*motor_225_speed_cmd = anchor_speed_cmd;
-					*motor_315_speed_cmd = anchor_speed_cmd;
+					motor_cmd->speed_225 = anchor_speed_cmd;
+					motor_cmd->speed_315 = anchor_speed_cmd;
 				}
 				else
 				{
-					*motor_45_speed_cmd = anchor_speed_cmd;
-					*motor_135_speed_cmd = anchor_speed_cmd;
+					motor_cmd->speed_45 = anchor_speed_cmd;
+					motor_cmd->speed_135 = anchor_speed_cmd;
 				}
 			}
 			else if (fabsf(north_m) > ANCHOR_POSITION_OFF_M)
 			{
 				if (north_m > 0.0f)
 				{
-					*motor_45_speed_cmd = anchor_speed_cmd;
-					*motor_315_speed_cmd = anchor_speed_cmd;
+					motor_cmd->speed_45 = anchor_speed_cmd;
+					motor_cmd->speed_315 = anchor_speed_cmd;
 				}
 				else
 				{
-					*motor_135_speed_cmd = anchor_speed_cmd;
-					*motor_225_speed_cmd = anchor_speed_cmd;
+					motor_cmd->speed_135 = anchor_speed_cmd;
+					motor_cmd->speed_225 = anchor_speed_cmd;
 				}
 			}
 		}
@@ -367,11 +356,10 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 
 void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, bool got_ui_update,
 																	const UIdata *ui, bool sonar_data_valid, const Sonar_t *sonar,
-																	uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-																	uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+												motor_speed *motor_cmd,
 																	bool *mode_entry_out)
 {
-	if ((state == NULL) || (ui == NULL) || (sonar == NULL))
+	if ((state == NULL) || (ui == NULL) || (sonar == NULL) || (motor_cmd == NULL))
 	{
 		return;
 	}
@@ -393,23 +381,17 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 	{
 		// Bias away from shore-side obstacle.
 		direction_t avoid_direction = (state->desired_shore_side == RIGHT) ? LEFT : RIGHT;
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_HARD_DELTA_CMD,
-													 motor_45_speed_cmd, motor_135_speed_cmd,
-													 motor_225_speed_cmd, motor_315_speed_cmd);
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_HARD_DELTA_CMD, motor_cmd);
 	}
 	else if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_CAUTION_CM))
 	{
 		direction_t avoid_direction = (state->desired_shore_side == RIGHT) ? LEFT : RIGHT;
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_SOFT_DELTA_CMD,
-													 motor_45_speed_cmd, motor_135_speed_cmd,
-													 motor_225_speed_cmd, motor_315_speed_cmd);
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
 	}
 	else
 	{
 		// Maintain desired speed with a small shoreline bias.
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_shore_side, 20,
-													 motor_45_speed_cmd, motor_135_speed_cmd,
-													 motor_225_speed_cmd, motor_315_speed_cmd);
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_shore_side, 20, motor_cmd);
 	}
 
 	if (mode_entry_out != NULL)
@@ -419,28 +401,31 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 }
 
 void MotorControl_ModeOverride(const UIdata *ui,
-															 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-															 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd)
+									 motor_speed *motor_cmd)
 {
-	if (ui == NULL)
+	if ((ui == NULL) || (motor_cmd == NULL))
 	{
 		return;
 	}
 
-	*motor_45_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->override_speed45);
-	*motor_135_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->override_speed135);
-	*motor_225_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->override_speed225);
-	*motor_315_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->override_speed315);
+	motor_cmd->speed_45 = Motor_MapSpeed0_100_to_PWM(ui->override_speed45);
+	motor_cmd->speed_135 = Motor_MapSpeed0_100_to_PWM(ui->override_speed135);
+	motor_cmd->speed_225 = Motor_MapSpeed0_100_to_PWM(ui->override_speed225);
+	motor_cmd->speed_315 = Motor_MapSpeed0_100_to_PWM(ui->override_speed315);
 }
 
-void MotorControl_SetOutputs(uint8_t motor_45_speed_cmd, uint8_t motor_135_speed_cmd,
-														 uint8_t motor_225_speed_cmd, uint8_t motor_315_speed_cmd)
+void MotorControl_SetOutputs(const motor_speed *motor_cmd)
 {
+	if (motor_cmd == NULL)
+	{
+		return;
+	}
+
 	// Convert 0-255 commands to timer counts.
-	uint32_t motor_45_arr = (MOTOR_PWM_MAX_COUNTS * motor_45_speed_cmd) / 255;
-	uint32_t motor_135_arr = (MOTOR_PWM_MAX_COUNTS * motor_135_speed_cmd) / 255;
-	uint32_t motor_225_arr = (MOTOR_PWM_MAX_COUNTS * motor_225_speed_cmd) / 255;
-	uint32_t motor_315_arr = (MOTOR_PWM_MAX_COUNTS * motor_315_speed_cmd) / 255;
+	uint32_t motor_45_arr = (MOTOR_PWM_MAX_COUNTS * motor_cmd->speed_45) / 255;
+	uint32_t motor_135_arr = (MOTOR_PWM_MAX_COUNTS * motor_cmd->speed_135) / 255;
+	uint32_t motor_225_arr = (MOTOR_PWM_MAX_COUNTS * motor_cmd->speed_225) / 255;
+	uint32_t motor_315_arr = (MOTOR_PWM_MAX_COUNTS * motor_cmd->speed_315) / 255;
 
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, motor_45_arr);
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, motor_135_arr);

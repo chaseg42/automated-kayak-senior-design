@@ -13,8 +13,8 @@ typedef struct
     float distance; // meters
     float angle_deg; // degrees
     float quality; // accuracy
-} RadarDetection;
+} RadarData;
 
-extern RadarDetection radar_detections[4];
+extern RadarData radar_detections;
 
 #endif /* INC_RADAR_H_ */

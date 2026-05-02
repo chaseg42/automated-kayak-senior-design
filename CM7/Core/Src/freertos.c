@@ -265,10 +265,7 @@ void StartMotorControlTask(void *argument)
       mode_entry = true;
     }
 
-    uint8_t motor_45_speed_cmd = 0;
-    uint8_t motor_135_speed_cmd = 0;
-    uint8_t motor_225_speed_cmd = 0;
-    uint8_t motor_315_speed_cmd = 0;
+    motor_speed motor_cmd = {0};
 
     switch (current_mode)
     {
@@ -285,26 +282,24 @@ void StartMotorControlTask(void *argument)
           mode_entry = false;
         }
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
-        motor_45_speed_cmd = 0;
-        motor_135_speed_cmd = 0;
-        motor_225_speed_cmd = 0;
-        motor_315_speed_cmd = 0;
+        motor_cmd.speed_45 = 0;
+        motor_cmd.speed_135 = 0;
+        motor_cmd.speed_225 = 0;
+        motor_cmd.speed_315 = 0;
         break;
 
       case MODE_MOVE:
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
         MotorControl_ModeMove(&motor_state, mode_entry, got_ui_update, &latest_ui,
                               sonar_data_valid, &latest_sonar,
-                              &motor_45_speed_cmd, &motor_135_speed_cmd,
-                              &motor_225_speed_cmd, &motor_315_speed_cmd,
+                              &motor_cmd,
                               &mode_entry);
         break;
 
       case MODE_ANCHOR:
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
         MotorControl_ModeAnchor(&motor_state, mode_entry,
-                                &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                &motor_225_speed_cmd, &motor_315_speed_cmd,
+                                &motor_cmd,
                                 &mode_entry);
         break;
 
@@ -312,29 +307,26 @@ void StartMotorControlTask(void *argument)
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
         MotorControl_ModeFollowShore(&motor_state, mode_entry, got_ui_update, &latest_ui,
                                      sonar_data_valid, &latest_sonar,
-                                     &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                     &motor_225_speed_cmd, &motor_315_speed_cmd,
+                                     &motor_cmd,
                                      &mode_entry);
         break;
       case MOTOR_OVERRIDE:
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
         MotorControl_ModeOverride(&latest_ui,
-                                  &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                  &motor_225_speed_cmd, &motor_315_speed_cmd);
+                                  &motor_cmd);
         break;
       default:
         current_mode = MODE_DISABLE;
         mode_entry = true;
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
-        motor_45_speed_cmd = 0;
-        motor_135_speed_cmd = 0;
-        motor_225_speed_cmd = 0;
-        motor_315_speed_cmd = 0;
+        motor_cmd.speed_45 = 0;
+        motor_cmd.speed_135 = 0;
+        motor_cmd.speed_225 = 0;
+        motor_cmd.speed_315 = 0;
         break;
     }
 
-      MotorControl_SetOutputs(motor_45_speed_cmd, motor_135_speed_cmd,
-               motor_225_speed_cmd, motor_315_speed_cmd);
+      MotorControl_SetOutputs(&motor_cmd);
 
     osDelay(MOTOR_LOOP_DELAY_MS);
   }
@@ -416,6 +408,12 @@ void StartGPSTask(void *argument)
 
 			// Decode information
 			decode_nav(&GPS_Parsed_Data, &GPS_Data);
+
+      uint8_t buf[85];
+      GPS_PopulateESP32Buffer(&GPS_Data, buf);
+
+      // Send send to ESP32
+      HAL_UART_Transmit(&huart6, buf, 85, 100);
 
 			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 

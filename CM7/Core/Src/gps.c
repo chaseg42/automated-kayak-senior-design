@@ -65,3 +65,40 @@ void decode_sec(GPSParsedDataStruct *gpds, GPSDataStruct *gds)
 	memcpy(gds->device_id, gpds->device_id, sizeof(gds->device_id));
 	return;
 }
+
+
+void GPS_PopulateESP32Buffer(GPSDataStruct *gps, uint8_t buf[85])
+{
+    uint8_t *p = buf;
+
+    // Start byte for framing
+    *p++ = 0xAA;
+
+    // world_position
+    memcpy(p, &gps->world_position.N, 8); p += 8;
+    memcpy(p, &gps->world_position.E, 8); p += 8;
+    memcpy(p, &gps->world_position.D, 8); p += 8;
+
+    // velocity
+    memcpy(p, &gps->velocity.N, 8); p += 8;
+    memcpy(p, &gps->velocity.E, 8); p += 8;
+    memcpy(p, &gps->velocity.D, 8); p += 8;
+
+    // rotation (only yaw = .E is used but send all for consistency)
+    memcpy(p, &gps->rotation.N, 8); p += 8;
+    memcpy(p, &gps->rotation.E, 8); p += 8;
+    memcpy(p, &gps->rotation.D, 8); p += 8;
+
+    // utc_date
+    memcpy(p, &gps->utc_date.year, 2);  p += 2;
+    *p++ = gps->utc_date.month;
+    *p++ = gps->utc_date.day;
+
+    // utc_time
+    *p++ = gps->utc_time.hour;
+    *p++ = gps->utc_time.min;
+    *p++ = gps->utc_time.sec;
+
+    // device_id
+    memcpy(p, gps->device_id, 5); p += 5;
+}

@@ -29,31 +29,34 @@ typedef struct
 	bool anchor_position_correction_active;
 } MotorControlState;
 
+typedef struct
+{
+	uint8_t speed_45;
+	uint8_t speed_135;
+	uint8_t speed_225;
+	uint8_t speed_315;
+} motor_speed;
+
 void MotorControl_InitState(MotorControlState *state);
 
 void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_ui_update,
 													 const UIdata *ui, bool sonar_data_valid, const Sonar_t *sonar,
-													 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-													 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+											 motor_speed *motor_cmd,
 													 bool *mode_entry_out);
 
 void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
-														 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-														 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+									 motor_speed *motor_cmd,
 														 bool *mode_entry_out);
 
 void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, bool got_ui_update,
 																	const UIdata *ui, bool sonar_data_valid, const Sonar_t *sonar,
-																	uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-																	uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd,
+												motor_speed *motor_cmd,
 																	bool *mode_entry_out);
 
 void MotorControl_ModeOverride(const UIdata *ui,
-															 uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-															 uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd);
+									 motor_speed *motor_cmd);
 
-void MotorControl_SetOutputs(uint8_t motor_45_speed_cmd, uint8_t motor_135_speed_cmd,
-														 uint8_t motor_225_speed_cmd, uint8_t motor_315_speed_cmd);
+void MotorControl_SetOutputs(const motor_speed *motor_cmd);
 
 
 #endif /* INC_MOTOR_CONTROL_H_ */

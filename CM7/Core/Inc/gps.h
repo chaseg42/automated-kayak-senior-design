@@ -118,4 +118,6 @@ extern bool b_tx_transfer_complete;
 void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds);
 void decode_sec(GPSParsedDataStruct *gpds, GPSDataStruct *gds);
 
+void GPS_PopulateESP32Buffer(GPSDataStruct *gps, uint8_t buf[85]);
+
 #endif /* INC_GPS_H_ */
