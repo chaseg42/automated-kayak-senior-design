@@ -21,7 +21,6 @@ GPSParsedDataStruct GPS_Parsed_Data;
 GPSDataStruct GPS_Data;
 
 byte UART4_rxBuffer[GPS_RX_BUFFER_SIZE] = {0};
-bool b_rx_transfer_complete, b_tx_transfer_complete = false;
 
 void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds)
 {

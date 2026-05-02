@@ -492,24 +492,12 @@ void StartGPSTask(void *argument)
 
 	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
 	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-	//
-	//		while(!b_tx_transfer_complete);
-	//		b_tx_transfer_complete = false;
 
 			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
 			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
 			// Wait for the UART4 RX ISR to complete
 			xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
-
-			// Wait for UART4 RX ISR to complete
-			// xTaskNotifyWait(0x00, 0x02, NULL, portMAX_DELAY);
-
-
-
-
-//			while(!b_rx_transfer_complete); // Wait until RX transmission is not busy
-//			b_rx_transfer_complete = false;
 
 			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
 			if(ubx_status != UBX_OK) { continue; } // Bail

@@ -530,10 +530,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART4)
 	{
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-		// xTaskNotifyFromISR(GPSTaskHandle,0x01, eSetBits, &xHigherPriorityTaskWoken);
-		// portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-		// b_tx_transfer_complete = true;
+
 	}
 }
 
@@ -547,7 +544,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
 		xTaskNotifyFromISR(GPSTaskHandle, 0x00, eNoAction, &xHigherPriorityTaskWoken);
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-		// b_rx_transfer_complete = true;
 	}
 }
 
