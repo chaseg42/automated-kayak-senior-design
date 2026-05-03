@@ -20,8 +20,10 @@
 GPSParsedDataStruct GPS_Parsed_Data;
 GPSDataStruct GPS_Data;
 
-byte UART4_rxBuffer[GPS_RX_BUFFER_SIZE] = {0};
+byte UART4_rxBuffer[GPS_RX_BUFFER_SIZE] __attribute__((aligned(UART4_DMA_CACHE_LINE_SIZE))) = {0};
 bool b_rx_transfer_complete, b_tx_transfer_complete = false;
+uint8_t UART6_txBuffer[ESP32_GPS_TX_LEN] __attribute__((aligned(UART4_DMA_CACHE_LINE_SIZE))) = {0};
+volatile bool usart6_tx_complete = true;
 
 void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds)
 {

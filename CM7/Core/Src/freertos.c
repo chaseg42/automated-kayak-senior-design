@@ -264,6 +264,10 @@ void StartMotorControlTask(void *argument)
       current_mode = (operatingMode_t)latest_ui.mode;
       mode_entry = true;
     }
+    else if (got_ui_update)
+    {
+      mode_entry = true;
+    }
 
     motor_speed motor_cmd = {0};
 
@@ -377,8 +381,9 @@ void StartGPSTask(void *argument)
 		HAL_StatusTypeDef uart4_status;
 	//	GPS_Data_Struct GPS_Data;
 
-		// Note: DMA transferring does not currently work. This does, however.
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
+    // Note: DMA requires cache maintenance on H7 when D-Cache is enabled.
+    SCB_CleanDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
 
 		// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
 		TickType_t poll_time = configTICK_RATE_HZ;
@@ -392,28 +397,39 @@ void StartGPSTask(void *argument)
   {
     		TickType_t ticks = xTaskGetTickCount();
 
-	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
-	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
-	//
-	//		while(!b_tx_transfer_complete);
-	//		b_tx_transfer_complete = false;
-
-			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
-			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+      if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
       xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
 
-			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-			if(ubx_status != UBX_OK) { continue; } // Bail
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+      ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+      if(ubx_status != UBX_OK) { continue; } // Bail
 
-			// Decode information
-			decode_nav(&GPS_Parsed_Data, &GPS_Data);
+      // Decode position/velocity
+      decode_nav(&GPS_Parsed_Data, &GPS_Data);
 
-      // uint8_t buf[85];
-      // GPS_PopulateESP32Buffer(&GPS_Data, buf);
+      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_att, sizeof(ubx_tx_poll_att));
+      if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-      // Send send to ESP32
-      //HAL_UART_Transmit_DMA(&huart6, buf, sizeof(buf));
+      xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
+
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+      ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+      if(ubx_status != UBX_OK) { continue; } // Bail
+
+      // Decode rotation using latest ATT fields
+      decode_nav(&GPS_Parsed_Data, &GPS_Data);
+
+      if (usart6_tx_complete)
+      {
+        usart6_tx_complete = false;
+        GPS_PopulateESP32Buffer(&GPS_Data, UART6_txBuffer);
+        SCB_CleanDCache_by_Addr((uint32_t *)UART6_txBuffer, UART4_DMA_CACHE_ALIGN_UP(ESP32_GPS_TX_LEN));
+
+        // Send send to ESP32
+        HAL_UART_Transmit_DMA(&huart6, UART6_txBuffer, ESP32_GPS_TX_LEN);
+      }
 
 			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 

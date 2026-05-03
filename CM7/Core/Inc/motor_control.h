@@ -22,6 +22,8 @@ typedef struct
 	direction_t last_drive_direction;
 	float move_desired_heading_deg;
 	bool move_heading_correction_active;
+	float follow_desired_heading_deg;
+	bool follow_heading_correction_active;
 	double anchor_desired_latitude;
 	double anchor_desired_longitude;
 	float anchor_desired_heading_deg;

@@ -114,6 +114,13 @@ extern GPSDataStruct GPS_Data;
 extern byte UART4_rxBuffer[];
 extern bool b_rx_transfer_complete;
 extern bool b_tx_transfer_complete;
+extern uint8_t UART6_txBuffer[];
+extern volatile bool usart6_tx_complete;
+
+#define UART4_DMA_CACHE_LINE_SIZE 32U
+#define UART4_DMA_CACHE_ALIGN_UP(size) (((size) + UART4_DMA_CACHE_LINE_SIZE - 1U) & ~(UART4_DMA_CACHE_LINE_SIZE - 1U))
+
+#define ESP32_GPS_TX_LEN 85U
 
 void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds);
 void decode_sec(GPSParsedDataStruct *gpds, GPSDataStruct *gds);

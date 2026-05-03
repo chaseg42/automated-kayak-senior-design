@@ -27,6 +27,11 @@
 #define ANCHOR_POSITION_SPEED_MAX_0_100  80U
 #define ANCHOR_POSITION_SPEED_MIN_0_100  20U
 
+#define FOLLOW_SHORE_TARGET_DEPTH_CM     100.0f
+#define FOLLOW_SHORE_DEADBAND_CM         10.0f
+#define FOLLOW_SHORE_KP_CMD_PER_CM       0.6f
+#define FOLLOW_SHORE_MAX_DELTA_CMD       90U
+
 #define GPS_METERS_PER_DEG_LAT           111111.0f
 #define GPS_DEG_TO_RAD                   0.01745329252f
 
@@ -168,6 +173,8 @@ void MotorControl_InitState(MotorControlState *state)
 	state->last_drive_direction = FORWARD;
 	state->move_desired_heading_deg = 0.0f;
 	state->move_heading_correction_active = false;
+	state->follow_desired_heading_deg = 0.0f;
+	state->follow_heading_correction_active = false;
 	state->anchor_desired_latitude = 0.0;
 	state->anchor_desired_longitude = 0.0;
 	state->anchor_desired_heading_deg = 0.0f;
@@ -209,6 +216,19 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 			}
 			state->last_drive_direction = state->desired_drive_direction;
 		}
+	}
+
+	if (state->desired_speed_cmd == 0U)
+	{
+		motor_cmd->speed_45 = 0U;
+		motor_cmd->speed_135 = 0U;
+		motor_cmd->speed_225 = 0U;
+		motor_cmd->speed_315 = 0U;
+		if (mode_entry_out != NULL)
+		{
+			*mode_entry_out = false;
+		}
+		return;
 	}
 
 	Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_drive_direction, 0, motor_cmd);
@@ -394,6 +414,8 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		// Initialize shoreline tracking intent from UI.
 		state->desired_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->speed);
 		state->desired_shore_side = ui->direction_to_turn;
+		state->follow_desired_heading_deg = (float)GPS_Data.rotation.E;
+		state->follow_heading_correction_active = false;
 	}
 
 	if (got_ui_update)
@@ -402,21 +424,74 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		state->desired_shore_side = ui->direction_to_turn;
 	}
 
-	if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM))
+	if (state->desired_speed_cmd == 0U)
 	{
-		// Bias away from shore-side obstacle.
-		direction_t avoid_direction = (state->desired_shore_side == RIGHT) ? LEFT : RIGHT;
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_HARD_DELTA_CMD, motor_cmd);
+		motor_cmd->speed_45 = 0U;
+		motor_cmd->speed_135 = 0U;
+		motor_cmd->speed_225 = 0U;
+		motor_cmd->speed_315 = 0U;
+		if (mode_entry_out != NULL)
+		{
+			*mode_entry_out = false;
+		}
+		return;
 	}
-	else if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_CAUTION_CM))
+
+	bool depth_valid = sonar_data_valid && (sonar->distance > 0.0f);
+	float depth_error_cm = 0.0f;
+
+	if (depth_valid)
 	{
-		direction_t avoid_direction = (state->desired_shore_side == RIGHT) ? LEFT : RIGHT;
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, avoid_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
+		depth_error_cm = FOLLOW_SHORE_TARGET_DEPTH_CM - sonar->distance;
+	}
+
+	if (depth_valid && (fabsf(depth_error_cm) > FOLLOW_SHORE_DEADBAND_CM))
+	{
+		// Depth control: steer toward/away from shore side to maintain target depth.
+		direction_t correction_direction = state->desired_shore_side;
+		if (depth_error_cm > 0.0f)
+		{
+			correction_direction = (state->desired_shore_side == RIGHT) ? LEFT : RIGHT;
+		}
+
+		float delta_f = fabsf(depth_error_cm) * FOLLOW_SHORE_KP_CMD_PER_CM;
+		uint8_t delta_cmd = (uint8_t)delta_f;
+		if (delta_cmd > FOLLOW_SHORE_MAX_DELTA_CMD)
+		{
+			delta_cmd = FOLLOW_SHORE_MAX_DELTA_CMD;
+		}
+		if (delta_cmd < MOTOR_TURN_SOFT_DELTA_CMD)
+		{
+			delta_cmd = MOTOR_TURN_SOFT_DELTA_CMD;
+		}
+
+		Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, delta_cmd, motor_cmd);
+		state->follow_heading_correction_active = false;
 	}
 	else
 	{
-		// Maintain desired speed with a small shoreline bias.
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_shore_side, 20, motor_cmd);
+		// Hold heading using GPS when depth is stable or invalid.
+		float current_heading_deg = (float)GPS_Data.rotation.E;
+		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->follow_desired_heading_deg);
+
+		if (!state->follow_heading_correction_active && (fabsf(heading_error_deg) > ANCHOR_HEADING_ON_DEG))
+		{
+			state->follow_heading_correction_active = true;
+		}
+		else if (state->follow_heading_correction_active && (fabsf(heading_error_deg) < ANCHOR_HEADING_OFF_DEG))
+		{
+			state->follow_heading_correction_active = false;
+		}
+
+		if (state->follow_heading_correction_active)
+		{
+			direction_t correction_direction = (heading_error_deg > 0.0f) ? RIGHT : LEFT;
+			Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
+		}
+		else
+		{
+			Motor_ComputeQuadSpeed(state->desired_speed_cmd, FORWARD, 0, motor_cmd);
+		}
 	}
 
 	if (mode_entry_out != NULL)

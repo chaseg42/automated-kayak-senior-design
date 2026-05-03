@@ -549,6 +549,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
 }
 
+// Used for Sonar and UI
 // Used for GPS
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -556,6 +557,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		//BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	}
+  else if (huart->Instance == USART6)
+  {
+    usart6_tx_complete = true;
+  }
 }
 
 // Used for GPS
@@ -565,6 +570,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 	if(huart->Instance == UART4)
 	{
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    if (Size > 0)
+    {
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(Size));
+    }
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
 		xTaskNotifyFromISR(GPSTaskHandle, 0x00, eNoAction, &xHigherPriorityTaskWoken);
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);

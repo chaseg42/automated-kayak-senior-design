@@ -108,27 +108,17 @@ static UBXStatus __initialize_ubx_frame_from_array(UBXFrame_Typedef *ubx_frame, 
 	byte s2 = _ubxm[1];
 	byte cl = _ubxm[2];
 	byte id = _ubxm[3];
-	word l_ = (_ubxm[5] << 1) | _ubxm[4];
-
-	byte _tempPayload[l_];
-	memset(_tempPayload, 0, sizeof(_tempPayload));
+	word l_ = ((word)_ubxm[5] << 8) | _ubxm[4];
 
 	byte offset = 6;
-	int i;
-
-	for(i = 0; i < l_; i++)
-	{
-	  _tempPayload[i] = _ubxm[i + offset];
-	}
-
-	byte ca = _ubxm[i + offset];
-	byte cb = _ubxm[i + offset + 1];
+	byte ca = _ubxm[offset + l_];
+	byte cb = _ubxm[offset + l_ + 1];
 
 	ubx_frame->preamble = (s2 << 1) | s1;
 	ubx_frame->class = cl;
 	ubx_frame->id = id;
 	ubx_frame->length = l_;
-	ubx_frame->payload = _tempPayload;
+	ubx_frame->payload = &_ubxm[offset];
 	ubx_frame->checksum_a = ca;
 	ubx_frame->checksum_b = cb;
 
@@ -308,7 +298,6 @@ UBXStatus parse_rx_buffer_to_ubx_frame(UBXFrame_Typedef *ubx_frame)
 	byte *_buffer = UART4_rxBuffer;
 
 	UBXStatus status = _initialize_ubx_frame_from_array(ubx_frame, _buffer); // ugh
-	clear_buffer(UART4_rxBuffer, sizeof(UART4_rxBuffer));
 
 	if(status == UBX_OK)
 	{
