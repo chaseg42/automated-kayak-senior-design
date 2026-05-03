@@ -82,7 +82,7 @@ const osThreadAttr_t DetermineStateT_attributes = {
 osThreadId_t GPSTaskHandle;
 const osThreadAttr_t GPSTask_attributes = {
   .name = "GPSTask",
-  .stack_size = 512 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for sonarQueue */
@@ -409,11 +409,11 @@ void StartGPSTask(void *argument)
 			// Decode information
 			decode_nav(&GPS_Parsed_Data, &GPS_Data);
 
-      uint8_t buf[85];
-      GPS_PopulateESP32Buffer(&GPS_Data, buf);
+      // uint8_t buf[85];
+      // GPS_PopulateESP32Buffer(&GPS_Data, buf);
 
       // Send send to ESP32
-      HAL_UART_Transmit(&huart6, buf, 85, 100);
+      //HAL_UART_Transmit_DMA(&huart6, buf, sizeof(buf));
 
 			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 
