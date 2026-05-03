@@ -82,7 +82,14 @@ const osThreadAttr_t DetermineStateT_attributes = {
 osThreadId_t GPSTaskHandle;
 const osThreadAttr_t GPSTask_attributes = {
   .name = "GPSTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for RadarTask */
+osThreadId_t RadarTaskHandle;
+const osThreadAttr_t RadarTask_attributes = {
+  .name = "RadarTask",
+  .stack_size = 2048 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for sonarQueue */
@@ -109,8 +116,10 @@ void StartSonarTask(void *argument);
 void StartMotorControlTask(void *argument);
 void StartDetermineStateTask(void *argument);
 void StartGPSTask(void *argument);
+void StartRadarTask(void *argument);
 void HeartbeatCallback(void *argument);
 
+extern void MX_USB_DEVICE_Init(void);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
@@ -163,6 +172,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of GPSTask */
   GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
 
+  /* creation of RadarTask */
+  RadarTaskHandle = osThreadNew(StartRadarTask, NULL, &RadarTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -182,11 +194,12 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartSonarTask */
 void StartSonarTask(void *argument)
 {
+
   /* USER CODE BEGIN StartSonarTask */
   
   // Begin waiting for end of data to fire interrupt
   HAL_UART_Receive_IT(&huart5, sonar5.rx_data, 4);
-  HAL_UART_Receive_IT(&huart7, sonar7.rx_data, 4);
+  //HAL_UART_Receive_IT(&huart7, sonar7.rx_data, 4);
 
   osTimerStart(HeartbeatTimerHandle, 500); // TODO move timer start to a task that makes more sense
                                            // Create generic init task?
@@ -198,18 +211,18 @@ void StartSonarTask(void *argument)
 
     // Transmit to all sonar sensors
     HAL_UART_Transmit(&huart5, &command, 1, 10);
-    HAL_UART_Transmit(&huart7, &command, 1, 10);
+    //HAL_UART_Transmit(&huart7, &command, 1, 10);
 
     if (sonar5.new_distance_flag == true)
     {
         sonar5.new_distance_flag = false;
         xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar5);
     }
-    if (sonar7.new_distance_flag == true)
-    {
-        sonar7.new_distance_flag = false;
-        xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar7);
-    }
+    //if (sonar7.new_distance_flag == true)
+    //{
+    //  sonar7.new_distance_flag = false;
+    //  xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar7);
+    //}
     
     osDelay(250);
   }
@@ -437,6 +450,26 @@ void StartGPSTask(void *argument)
 
   }
   /* USER CODE END StartGPSTask */
+}
+
+/* USER CODE BEGIN Header_StartRadarTask */
+/**
+* @brief Function implementing the RadarTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartRadarTask */
+void StartRadarTask(void *argument)
+{
+  /* USER CODE BEGIN StartRadarTask */
+	/* init code for USB_DEVICE */
+	MX_USB_DEVICE_Init();
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartRadarTask */
 }
 
 /* HeartbeatCallback function */

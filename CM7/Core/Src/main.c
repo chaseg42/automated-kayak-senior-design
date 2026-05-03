@@ -22,6 +22,7 @@
 #include "dma.h"
 #include "tim.h"
 #include "usart.h"
+#include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -148,7 +149,6 @@ Error_Handler();
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_UART5_Init();
-  MX_UART7_Init();
   MX_UART4_Init();
   MX_TIM2_Init();
   MX_USART6_UART_Init();
