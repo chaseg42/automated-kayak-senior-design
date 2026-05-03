@@ -33,6 +33,10 @@
 #include "gps.h"
 #include "ubx.h"
 #include "queue.h"
+#include "motor_control.h"
+#include "radar.h"
+#include "usbd_def.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,12 +46,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MOTOR_PWM_MAX_COUNTS             10000
 #define MOTOR_LOOP_DELAY_MS              100
-#define SONAR_OBSTACLE_NEAR_CM           10.0f  // distance threshold for sonar aggressive maneuver
-#define SONAR_OBSTACLE_CAUTION_CM        100.0f // distance threshold for sonar softer maneuver
-#define MOTOR_TURN_SOFT_DELTA_CMD        40     // change in speed for softer maneuver
-#define MOTOR_TURN_HARD_DELTA_CMD        90     // change in speed for aggressive maneuver
 
 /* USER CODE END PD */
 
@@ -88,6 +87,13 @@ const osThreadAttr_t GPSTask_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for RadarTask */
+osThreadId_t RadarTaskHandle;
+const osThreadAttr_t RadarTask_attributes = {
+  .name = "RadarTask",
+  .stack_size = 2048 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for sonarQueue */
 osMessageQueueId_t sonarQueueHandle;
 const osMessageQueueAttr_t sonarQueue_attributes = {
@@ -106,21 +112,16 @@ const osTimerAttr_t HeartbeatTimer_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-static uint8_t Motor_ClampSpeedCmd(int32_t speed_cmd);
-static void Motor_ComputeQuadSpeed(uint8_t base_speed_cmd, direction_t turn_direction, uint8_t turn_delta_cmd,
-                                   uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-                                   uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd);
-static void Motor_SetOutputs(uint8_t motor_45_speed_cmd, uint8_t motor_135_speed_cmd,
-                             uint8_t motor_225_speed_cmd, uint8_t motor_315_speed_cmd);
-
 /* USER CODE END FunctionPrototypes */
 
 void StartSonarTask(void *argument);
 void StartMotorControlTask(void *argument);
 void StartDetermineStateTask(void *argument);
 void StartGPSTask(void *argument);
+void StartRadarTask(void *argument);
 void HeartbeatCallback(void *argument);
 
+extern void MX_USB_DEVICE_Init(void);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
@@ -173,6 +174,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of GPSTask */
   GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
 
+  /* creation of RadarTask */
+  RadarTaskHandle = osThreadNew(StartRadarTask, NULL, &RadarTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -192,11 +196,12 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartSonarTask */
 void StartSonarTask(void *argument)
 {
+
   /* USER CODE BEGIN StartSonarTask */
   
   // Begin waiting for end of data to fire interrupt
   HAL_UART_Receive_IT(&huart5, sonar5.rx_data, 4);
-  HAL_UART_Receive_IT(&huart7, sonar7.rx_data, 4);
+  //HAL_UART_Receive_IT(&huart7, sonar7.rx_data, 4);
 
   osTimerStart(HeartbeatTimerHandle, 500); // TODO move timer start to a task that makes more sense
                                            // Create generic init task?
@@ -208,18 +213,18 @@ void StartSonarTask(void *argument)
 
     // Transmit to all sonar sensors
     HAL_UART_Transmit(&huart5, &command, 1, 10);
-    HAL_UART_Transmit(&huart7, &command, 1, 10);
+    //HAL_UART_Transmit(&huart7, &command, 1, 10);
 
     if (sonar5.new_distance_flag == true)
     {
         sonar5.new_distance_flag = false;
         xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar5);
     }
-    if (sonar7.new_distance_flag == true)
-    {
-        sonar7.new_distance_flag = false;
-        xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar7);
-    }
+    //if (sonar7.new_distance_flag == true)
+    //{
+    //  sonar7.new_distance_flag = false;
+    //  xQueueOverwrite((QueueHandle_t)sonarQueueHandle, &sonar7);
+    //}
     
     osDelay(250);
   }
@@ -246,9 +251,8 @@ void StartMotorControlTask(void *argument)
   bool mode_entry = true;
   bool startup_steps_done = false;
 
-  uint8_t desired_speed_cmd = 0U;
-  direction_t desired_drive_direction = FORWARD;
-  direction_t desired_shore_side = RIGHT;
+  MotorControlState motor_state;
+  MotorControl_InitState(&motor_state);
 
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); // 45 degree
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2); // 135 degree
@@ -275,11 +279,12 @@ void StartMotorControlTask(void *argument)
       current_mode = (operatingMode_t)latest_ui.mode;
       mode_entry = true;
     }
+    else if (got_ui_update)
+    {
+      mode_entry = true;
+    }
 
-    uint8_t motor_45_speed_cmd = 0;
-    uint8_t motor_135_speed_cmd = 0;
-    uint8_t motor_225_speed_cmd = 0;
-    uint8_t motor_315_speed_cmd = 0;
+    motor_speed motor_cmd = {0};
 
     switch (current_mode)
     {
@@ -292,139 +297,55 @@ void StartMotorControlTask(void *argument)
             // TODO Set up DMA on ethernet port
             startup_steps_done = true;
           }
-          desired_speed_cmd = 0;
+          motor_state.desired_speed_cmd = 0;
           mode_entry = false;
         }
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
-        motor_45_speed_cmd = 0;
-        motor_135_speed_cmd = 0;
-        motor_225_speed_cmd = 0;
-        motor_315_speed_cmd = 0;
+        motor_cmd.speed_45 = 0;
+        motor_cmd.speed_135 = 0;
+        motor_cmd.speed_225 = 0;
+        motor_cmd.speed_315 = 0;
         break;
 
       case MODE_MOVE:
-        if (mode_entry)
-        {
-          // read desired speed from notification
-          desired_speed_cmd = latest_ui.speed;
-          desired_drive_direction = latest_ui.direction_to_turn;
-          // TODO get GPS heading notification and save desired heading
-          mode_entry = false;
-        }
-
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
-
-        if (got_ui_update)
-        {
-          desired_speed_cmd = latest_ui.speed;
-          desired_drive_direction = latest_ui.direction_to_turn;
-        }
-
-        Motor_ComputeQuadSpeed(desired_speed_cmd, desired_drive_direction, 0,
-                   &motor_45_speed_cmd, &motor_135_speed_cmd,
-                   &motor_225_speed_cmd, &motor_315_speed_cmd);
-
-        if ((desired_drive_direction != REVERSE) && sonar_data_valid && (latest_sonar.distance <= SONAR_OBSTACLE_NEAR_CM))
-        {
-          // object within 10 cm -> aggressive avoidance turn
-          Motor_ComputeQuadSpeed(desired_speed_cmd, RIGHT, MOTOR_TURN_HARD_DELTA_CMD,
-                                 &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                 &motor_225_speed_cmd, &motor_315_speed_cmd);
-        }
-        else if ((desired_drive_direction != REVERSE) && sonar_data_valid && (latest_sonar.distance <= SONAR_OBSTACLE_CAUTION_CM))
-        {
-          // object within 1 meter -> softer correction
-          Motor_ComputeQuadSpeed(desired_speed_cmd, RIGHT, MOTOR_TURN_SOFT_DELTA_CMD,
-                                 &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                 &motor_225_speed_cmd, &motor_315_speed_cmd);
-        }
-        else
-        {
-          // TODO if current heading is >=15 deg away from desired compute heading correction
-          // TODO do something if radar detects obstacle in path
-        }
+        MotorControl_ModeMove(&motor_state, mode_entry, got_ui_update, &latest_ui,
+                              sonar_data_valid, &latest_sonar,
+                              &motor_cmd,
+                              &mode_entry);
         break;
 
       case MODE_ANCHOR:
-        if (mode_entry)
-        {
-          // TODO wait for GPS position + heading notification and save desired position and heading
-          mode_entry = false;
-        }
-
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
-
-        // TODO:
-        //  Check new heading and correct when >=15 deg away from desired
-        //  Check new location and correct when >=1 meter away from desired
-        motor_45_speed_cmd = 0;
-        motor_135_speed_cmd = 0;
-        motor_225_speed_cmd = 0;
-        motor_315_speed_cmd = 0;
+        MotorControl_ModeAnchor(&motor_state, mode_entry,
+                                &motor_cmd,
+                                &mode_entry);
         break;
 
       case MODE_FOLLOW_SHORE:
-        if (mode_entry)
-        {
-          desired_speed_cmd = latest_ui.speed;
-          desired_shore_side = latest_ui.direction_to_turn;
-          // TODO wait for radar data to save shoreline
-          mode_entry = false;
-        }
-
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
-
-        if (got_ui_update)
-        {
-          desired_speed_cmd = latest_ui.speed;
-          desired_shore_side = latest_ui.direction_to_turn;
-        }
-
-        if (sonar_data_valid && (latest_sonar.distance <= SONAR_OBSTACLE_NEAR_CM))
-        {
-          direction_t avoid_direction = (desired_shore_side == RIGHT) ? LEFT : RIGHT;
-          Motor_ComputeQuadSpeed(desired_speed_cmd, avoid_direction, MOTOR_TURN_HARD_DELTA_CMD,
-                                 &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                 &motor_225_speed_cmd, &motor_315_speed_cmd);
-        }
-        else if (sonar_data_valid && (latest_sonar.distance <= SONAR_OBSTACLE_CAUTION_CM))
-        {
-          direction_t avoid_direction = (desired_shore_side == RIGHT) ? LEFT : RIGHT;
-          Motor_ComputeQuadSpeed(desired_speed_cmd, avoid_direction, MOTOR_TURN_SOFT_DELTA_CMD,
-                                 &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                 &motor_225_speed_cmd, &motor_315_speed_cmd);
-        }
-        else
-        {
-          // no immediate obstacle so keep desired speed with slight shoreline bias
-          Motor_ComputeQuadSpeed(desired_speed_cmd, desired_shore_side, 20,
-                                 &motor_45_speed_cmd, &motor_135_speed_cmd,
-                                 &motor_225_speed_cmd, &motor_315_speed_cmd);
-
-          // TODO follow shoreline using radar data
-          // TODO use heading error >=15 deg to compute correction
-        }
+        MotorControl_ModeFollowShore(&motor_state, mode_entry, got_ui_update, &latest_ui,
+                                     sonar_data_valid, &latest_sonar,
+                                     &motor_cmd,
+                                     &mode_entry);
         break;
       case MOTOR_OVERRIDE:
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_SET); // Motor relay on
-        motor_45_speed_cmd = latest_ui.override_speed45;
-        motor_135_speed_cmd = latest_ui.override_speed135;
-        motor_225_speed_cmd = latest_ui.override_speed225;
-        motor_315_speed_cmd = latest_ui.override_speed315;
+        MotorControl_ModeOverride(&latest_ui,
+                                  &motor_cmd);
         break;
       default:
         current_mode = MODE_DISABLE;
         mode_entry = true;
         HAL_GPIO_WritePin(GPIOD, GPIO_PIN_11, GPIO_PIN_RESET); // Motor relay off
-        motor_45_speed_cmd = 0;
-        motor_135_speed_cmd = 0;
-        motor_225_speed_cmd = 0;
-        motor_315_speed_cmd = 0;
+        motor_cmd.speed_45 = 0;
+        motor_cmd.speed_135 = 0;
+        motor_cmd.speed_225 = 0;
+        motor_cmd.speed_315 = 0;
         break;
     }
 
-      Motor_SetOutputs(motor_45_speed_cmd, motor_135_speed_cmd,
-               motor_225_speed_cmd, motor_315_speed_cmd);
+      MotorControl_SetOutputs(&motor_cmd);
 
     osDelay(MOTOR_LOOP_DELAY_MS);
   }
@@ -442,7 +363,7 @@ void StartDetermineStateTask(void *argument)
 {
   /* USER CODE BEGIN StartDetermineStateTask */
 
-  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7) != HAL_OK) {
+  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 8) != HAL_OK) {
 	  while(1);
   }
   /* Infinite loop */
@@ -475,8 +396,9 @@ void StartGPSTask(void *argument)
 		HAL_StatusTypeDef uart4_status;
 	//	GPS_Data_Struct GPS_Data;
 
-		// Note: DMA transferring does not currently work. This does, however.
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
+    // Note: DMA requires cache maintenance on H7 when D-Cache is enabled.
+    SCB_CleanDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
 
 		// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
 		TickType_t poll_time = configTICK_RATE_HZ;
@@ -488,28 +410,93 @@ void StartGPSTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    		TickType_t ticks = xTaskGetTickCount();
+      TickType_t ticks = xTaskGetTickCount();
 
-	//		uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_id, sizeof(ubx_tx_poll_id));
-	//		if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+      if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
-			uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
-			if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+      xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
 
-			// Wait for the UART4 RX ISR to complete
-			xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+      ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+      if(ubx_status != UBX_OK) { continue; } // Bail
 
-			ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
-			if(ubx_status != UBX_OK) { continue; } // Bail
+      // Decode position/velocity
+      decode_nav(&GPS_Parsed_Data, &GPS_Data);
 
-			// Decode information
-			decode_nav(&GPS_Parsed_Data, &GPS_Data);
+      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_att, sizeof(ubx_tx_poll_att));
+      if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
+
+      xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
+
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
+      ubx_status = parse_rx_buffer_to_ubx_frame(&UBXFrame);
+      if(ubx_status != UBX_OK) { continue; } // Bail
+
+      // Decode rotation using latest ATT fields
+      decode_nav(&GPS_Parsed_Data, &GPS_Data);
+
+      if (usart6_tx_complete)
+      {
+        usart6_tx_complete = false;
+        GPS_PopulateESP32Buffer(&GPS_Data, UART6_txBuffer);
+        SCB_CleanDCache_by_Addr((uint32_t *)UART6_txBuffer, UART4_DMA_CACHE_ALIGN_UP(ESP32_GPS_TX_LEN));
+
+        // Send send to ESP32
+        HAL_UART_Transmit_DMA(&huart6, UART6_txBuffer, ESP32_GPS_TX_LEN);
+      }
 
 			// TODO: Once we integrate the task where this information is used, use a notification here to indicate that this task has concluded.
 
 			while((current_ticks - ticks) < poll_time) { current_ticks = xTaskGetTickCount(); }
+
   }
   /* USER CODE END StartGPSTask */
+}
+
+/* USER CODE BEGIN Header_StartRadarTask */
+/**
+* @brief Function implementing the RadarTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartRadarTask */
+extern USBD_HandleTypeDef hUsbDeviceFS;
+extern bool radar_task_update;
+void StartRadarTask(void *argument)
+{
+  /* USER CODE BEGIN StartRadarTask */
+	/* init code for USB_DEVICE */
+	MX_USB_DEVICE_Init();
+  /* Infinite loop */
+  for(;;)
+  {
+
+	  // Loop for rx the radar
+	  // Wait for signal from USB buffer callback
+	  // Extract buffer
+	  // No data, we can wait for UI here
+
+	  if(!radar_task_update)
+	  {
+		  if(radar_detections.radar_state == 1)
+		  {
+			  radar_task_update = true;
+		  }
+	  }
+
+	  if(radar_task_update)
+	  {
+		  usb_radar_rx(&hUsbDeviceFS);
+	  }
+
+	  usb_radar_tx_state();
+
+	  osDelay(100);
+
+
+  }
+  /* USER CODE END StartRadarTask */
 }
 
 /* HeartbeatCallback function */
@@ -522,75 +509,6 @@ void HeartbeatCallback(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-static uint8_t Motor_ClampSpeedCmd(int32_t speed_cmd)
-{
-  if (speed_cmd < 0)
-  {
-    return 0U;
-  }
-  if (speed_cmd > 255)
-  {
-    return 255U;
-  }
-  return (uint8_t)speed_cmd;
-}
-
-static void Motor_ComputeQuadSpeed(uint8_t base_speed_cmd, direction_t turn_direction, uint8_t turn_delta_cmd,
-                                   uint8_t *motor_45_speed_cmd, uint8_t *motor_135_speed_cmd,
-                                   uint8_t *motor_225_speed_cmd, uint8_t *motor_315_speed_cmd)
-{
-  int32_t motor_45 = 0;
-  int32_t motor_135 = 0;
-  int32_t motor_225 = 0;
-  int32_t motor_315 = 0;
-
-  // front of kayak is 0 deg
-  // 45 and 315 are front thrusters so keep them off during forward and turns
-  // 135 and 225 handle forward movement and yaw while moving forward
-  if (turn_direction == REVERSE)
-  {
-    motor_45 = base_speed_cmd;
-    motor_315 = base_speed_cmd;
-    // TODO gps correction in reverse if needed
-  }
-  else
-  {
-    motor_135 = base_speed_cmd;
-    motor_225 = base_speed_cmd;
-
-    // for right yaw while moving forward push 225 more and 135 less
-    if (turn_direction == RIGHT)
-    {
-      motor_135 -= turn_delta_cmd;
-      motor_225 += turn_delta_cmd;
-    }
-    else if (turn_direction == LEFT)
-    {
-      motor_135 += turn_delta_cmd;
-      motor_225 -= turn_delta_cmd;
-    }
-  }
-
-  *motor_45_speed_cmd = Motor_ClampSpeedCmd(motor_45);
-  *motor_135_speed_cmd = Motor_ClampSpeedCmd(motor_135);
-  *motor_225_speed_cmd = Motor_ClampSpeedCmd(motor_225);
-  *motor_315_speed_cmd = Motor_ClampSpeedCmd(motor_315);
-}
-
-static void Motor_SetOutputs(uint8_t motor_45_speed_cmd, uint8_t motor_135_speed_cmd,
-                             uint8_t motor_225_speed_cmd, uint8_t motor_315_speed_cmd)
-{
-  uint32_t motor_45_arr = (MOTOR_PWM_MAX_COUNTS * motor_45_speed_cmd) / 255;
-  uint32_t motor_135_arr = (MOTOR_PWM_MAX_COUNTS * motor_135_speed_cmd) / 255;
-  uint32_t motor_225_arr = (MOTOR_PWM_MAX_COUNTS * motor_225_speed_cmd) / 255;
-  uint32_t motor_315_arr = (MOTOR_PWM_MAX_COUNTS * motor_315_speed_cmd) / 255;
-
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, motor_45_arr);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, motor_135_arr);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, motor_225_arr);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, motor_315_arr);
-}
-
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     // breakpoint here
     while(1);

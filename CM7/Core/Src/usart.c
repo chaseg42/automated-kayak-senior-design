@@ -24,14 +24,15 @@
 #include "task.h"
 #include "cmsis_os.h"
 extern osThreadId_t GPSTaskHandle;
+#include "radar.h"
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart5;
-UART_HandleTypeDef huart7;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_uart4_rx;
 DMA_HandleTypeDef hdma_uart4_tx;
+DMA_HandleTypeDef hdma_usart6_tx;
 
 /* UART4 init function */
 void MX_UART4_Init(void)
@@ -117,49 +118,6 @@ void MX_UART5_Init(void)
   /* USER CODE BEGIN UART5_Init 2 */
 
   /* USER CODE END UART5_Init 2 */
-
-}
-/* UART7 init function */
-void MX_UART7_Init(void)
-{
-
-  /* USER CODE BEGIN UART7_Init 0 */
-
-  /* USER CODE END UART7_Init 0 */
-
-  /* USER CODE BEGIN UART7_Init 1 */
-
-  /* USER CODE END UART7_Init 1 */
-  huart7.Instance = UART7;
-  huart7.Init.BaudRate = 115200;
-  huart7.Init.WordLength = UART_WORDLENGTH_8B;
-  huart7.Init.StopBits = UART_STOPBITS_1;
-  huart7.Init.Parity = UART_PARITY_NONE;
-  huart7.Init.Mode = UART_MODE_TX_RX;
-  huart7.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart7.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart7.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart7.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart7.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart7) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart7, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart7, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart7) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN UART7_Init 2 */
-
-  /* USER CODE END UART7_Init 2 */
 
 }
 /* USART6 init function */
@@ -323,51 +281,6 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 
   /* USER CODE END UART5_MspInit 1 */
   }
-  else if(uartHandle->Instance==UART7)
-  {
-  /* USER CODE BEGIN UART7_MspInit 0 */
-
-  /* USER CODE END UART7_MspInit 0 */
-
-  /** Initializes the peripherals clock
-  */
-    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_UART7;
-    PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
-    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
-    {
-      Error_Handler();
-    }
-
-    /* UART7 clock enable */
-    __HAL_RCC_UART7_CLK_ENABLE();
-
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    /**UART7 GPIO Configuration
-    PA8     ------> UART7_RX
-    PB4 (NJTRST)     ------> UART7_TX
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_8;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF11_UART7;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_4;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF11_UART7;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    /* UART7 interrupt Init */
-    HAL_NVIC_SetPriority(UART7_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(UART7_IRQn);
-  /* USER CODE BEGIN UART7_MspInit 1 */
-
-  /* USER CODE END UART7_MspInit 1 */
-  }
   else if(uartHandle->Instance==USART6)
   {
   /* USER CODE BEGIN USART6_MspInit 0 */
@@ -397,6 +310,25 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    /* USART6 DMA Init */
+    /* USART6_TX Init */
+    hdma_usart6_tx.Instance = DMA1_Stream2;
+    hdma_usart6_tx.Init.Request = DMA_REQUEST_USART6_TX;
+    hdma_usart6_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_usart6_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_usart6_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_usart6_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_usart6_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_usart6_tx.Init.Mode = DMA_NORMAL;
+    hdma_usart6_tx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_usart6_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    if (HAL_DMA_Init(&hdma_usart6_tx) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart6_tx);
 
     /* USART6 interrupt Init */
     HAL_NVIC_SetPriority(USART6_IRQn, 5, 0);
@@ -454,28 +386,6 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
   /* USER CODE END UART5_MspDeInit 1 */
   }
-  else if(uartHandle->Instance==UART7)
-  {
-  /* USER CODE BEGIN UART7_MspDeInit 0 */
-
-  /* USER CODE END UART7_MspDeInit 0 */
-    /* Peripheral clock disable */
-    __HAL_RCC_UART7_CLK_DISABLE();
-
-    /**UART7 GPIO Configuration
-    PA8     ------> UART7_RX
-    PB4 (NJTRST)     ------> UART7_TX
-    */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_8);
-
-    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_4);
-
-    /* UART7 interrupt Deinit */
-    HAL_NVIC_DisableIRQ(UART7_IRQn);
-  /* USER CODE BEGIN UART7_MspDeInit 1 */
-
-  /* USER CODE END UART7_MspDeInit 1 */
-  }
   else if(uartHandle->Instance==USART6)
   {
   /* USER CODE BEGIN USART6_MspDeInit 0 */
@@ -489,6 +399,9 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
     PC7     ------> USART6_RX
     */
     HAL_GPIO_DeInit(GPIOC, GPIO_PIN_6|GPIO_PIN_7);
+
+    /* USART6 DMA DeInit */
+    HAL_DMA_DeInit(uartHandle->hdmatx);
 
     /* USART6 interrupt Deinit */
     HAL_NVIC_DisableIRQ(USART6_IRQn);
@@ -513,25 +426,40 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
   else if (huart->Instance == USART6)
   {
-    ui_state.mode = (operatingMode_t)ui_state.rx_data[0];
-    ui_state.direction_to_turn = (direction_t)ui_state.rx_data[1];
-    ui_state.speed = ui_state.rx_data[2];
-    ui_state.override_speed45 = ui_state.rx_data[3];
-    ui_state.override_speed135 = ui_state.rx_data[4];
-    ui_state.override_speed225 = ui_state.rx_data[5];
-    ui_state.override_speed315 = ui_state.rx_data[6];
-    ui_state.new_data_flag = true;
-    HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7);
+	if (ui_state.rx_data[0] == 0x67)
+	{
+		// Radar on/off
+		radar_detections.radar_state = (bool)ui_state.rx_data[1];
+	}
+	else if (ui_state.rx_data[0] == 0x69)
+	{
+		// State information
+	    ui_state.mode = (operatingMode_t)ui_state.rx_data[1];
+	    ui_state.direction_to_turn = (direction_t)ui_state.rx_data[2];
+	    ui_state.speed = ui_state.rx_data[3];
+	    ui_state.override_speed45 = ui_state.rx_data[5];
+	    ui_state.override_speed135 = ui_state.rx_data[6];
+	    ui_state.override_speed225 = ui_state.rx_data[7];
+	    ui_state.override_speed315 = ui_state.rx_data[4];
+	    ui_state.new_data_flag = true;
+	}
+
+    HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 8);
   }
 }
 
+// Used for Sonar and UI
 // Used for GPS
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART4)
 	{
-
+		//BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	}
+  else if (huart->Instance == USART6)
+  {
+    usart6_tx_complete = true;
+  }
 }
 
 // Used for GPS
@@ -540,7 +468,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
 	if(huart->Instance == UART4)
 	{
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    if (Size > 0)
+    {
+      SCB_InvalidateDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(Size));
+    }
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Re-enable the interrupt
 		xTaskNotifyFromISR(GPSTaskHandle, 0x00, eNoAction, &xHigherPriorityTaskWoken);
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
