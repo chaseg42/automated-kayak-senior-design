@@ -34,6 +34,8 @@
 #include "ubx.h"
 #include "queue.h"
 #include "motor_control.h"
+#include "radar.h"
+#include "usbd_def.h"
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -361,7 +363,7 @@ void StartDetermineStateTask(void *argument)
 {
   /* USER CODE BEGIN StartDetermineStateTask */
 
-  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7) != HAL_OK) {
+  if (HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 8) != HAL_OK) {
 	  while(1);
   }
   /* Infinite loop */
@@ -408,7 +410,7 @@ void StartGPSTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    		TickType_t ticks = xTaskGetTickCount();
+      TickType_t ticks = xTaskGetTickCount();
 
       uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
       if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
@@ -459,6 +461,8 @@ void StartGPSTask(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartRadarTask */
+extern USBD_HandleTypeDef hUsbDeviceFS;
+extern bool radar_task_update;
 void StartRadarTask(void *argument)
 {
   /* USER CODE BEGIN StartRadarTask */
@@ -467,7 +471,30 @@ void StartRadarTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+
+	  // Loop for rx the radar
+	  // Wait for signal from USB buffer callback
+	  // Extract buffer
+	  // No data, we can wait for UI here
+
+	  if(!radar_task_update)
+	  {
+		  if(radar_detections.radar_state == 1)
+		  {
+			  radar_task_update = true;
+		  }
+	  }
+
+	  if(radar_task_update)
+	  {
+		  usb_radar_rx(&hUsbDeviceFS);
+	  }
+
+	  usb_radar_tx_state();
+
+	  osDelay(100);
+
+
   }
   /* USER CODE END StartRadarTask */
 }

@@ -25,6 +25,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 extern osThreadId_t GPSTaskHandle;
+#include "radar.h"
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart4;
@@ -426,15 +427,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
   else if (huart->Instance == USART6)
   {
-    ui_state.mode = (operatingMode_t)ui_state.rx_data[0];
-    ui_state.direction_to_turn = (direction_t)ui_state.rx_data[1];
-    ui_state.speed = ui_state.rx_data[2];
-    ui_state.override_speed45 = ui_state.rx_data[4];
-    ui_state.override_speed135 = ui_state.rx_data[5];
-    ui_state.override_speed225 = ui_state.rx_data[6];
-    ui_state.override_speed315 = ui_state.rx_data[3];
-    ui_state.new_data_flag = true;
-    HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 7);
+	if (ui_state.rx_data[0] == 0x67)
+	{
+		// Radar on/off
+		radar_detections.radar_state = (bool)ui_state.rx_data[1];
+	}
+	else if (ui_state.rx_data[0] == 0x69)
+	{
+		// State information
+	    ui_state.mode = (operatingMode_t)ui_state.rx_data[1];
+	    ui_state.direction_to_turn = (direction_t)ui_state.rx_data[2];
+	    ui_state.speed = ui_state.rx_data[3];
+	    ui_state.override_speed45 = ui_state.rx_data[5];
+	    ui_state.override_speed135 = ui_state.rx_data[6];
+	    ui_state.override_speed225 = ui_state.rx_data[7];
+	    ui_state.override_speed315 = ui_state.rx_data[4];
+	    ui_state.new_data_flag = true;
+	}
+
+    HAL_UART_Receive_IT(&huart6, ui_state.rx_data, 8);
   }
 }
 
