@@ -21,10 +21,10 @@ typedef struct
 
 extern bool radar_task_update;
 
-#define RADAR_ID 0x67
+// #define RADAR_ID 0x67
 
 extern RadarData radar_detections;
-void usb_radar_rx(USBD_HandleTypeDef *pdev);
+void usb_radar_rx(uint8_t *buf);
 void usb_radar_tx_state();
 
 #endif /* INC_RADAR_H_ */

@@ -400,8 +400,8 @@ void StartGPSTask(void *argument)
     SCB_CleanDCache_by_Addr((uint32_t *)UART4_rxBuffer, UART4_DMA_CACHE_ALIGN_UP(GPS_RX_BUFFER_SIZE));
     HAL_UARTEx_ReceiveToIdle_DMA(&huart4, UART4_rxBuffer, GPS_RX_BUFFER_SIZE); // Initialize UART4 to use the RX interrupt
 
-		// TODO: Divide poll_time by 10 for HNR => 10 Hz, otherwise, 1 Hz is default. Waiting for kayak state implementation to include this
-		TickType_t poll_time = configTICK_RATE_HZ;
+		// Division matches the poll rate, (currently = 10 Hz) we can perform GPS request commands at. HNR solutions allow up to 30 Hz.
+		TickType_t poll_time = configTICK_RATE_HZ / 10;
 		TickType_t current_ticks = 0;
 
 		// Goal: We want to request GPS data continuously when the receiver is ready.
@@ -412,7 +412,7 @@ void StartGPSTask(void *argument)
   {
       TickType_t ticks = xTaskGetTickCount();
 
-      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt, sizeof(ubx_tx_poll_pvt));
+      uart4_status = HAL_UART_Transmit_DMA(&huart4, ubx_tx_poll_pvt_hnr, sizeof(ubx_tx_poll_pvt_hnr));
       if(uart4_status == HAL_ERROR || uart4_status == HAL_TIMEOUT) { continue; } // Bail
 
       xTaskNotifyWait(0x00, 0x00, NULL, portMAX_DELAY);
@@ -472,27 +472,30 @@ void StartRadarTask(void *argument)
   for(;;)
   {
 
-	  // Loop for rx the radar
-	  // Wait for signal from USB buffer callback
-	  // Extract buffer
-	  // No data, we can wait for UI here
-
-	  if(!radar_task_update)
-	  {
-		  if(radar_detections.radar_state == 1)
-		  {
-			  radar_task_update = true;
-		  }
-	  }
-
-	  if(radar_task_update)
-	  {
-		  usb_radar_rx(&hUsbDeviceFS);
-	  }
-
+//	  radar_task_update = true;
+//	  radar_detections.radar_state = 1;
+//
+//	  // Loop for rx the radar
+//	  // Wait for signal from USB buffer callback
+//	  // Extract buffer
+//	  // No data, we can wait for UI here
+//
+//	  if(!radar_task_update)
+//	  {
+//		  if(radar_detections.radar_state == 1)
+//		  {
+//			  radar_task_update = true;
+//		  }
+//	  }
+//
+//	  if(radar_task_update)
+//	  {
+//	  usb_radar_rx(&hUsbDeviceFS);
+//	  }
+//
 	  usb_radar_tx_state();
 
-	  osDelay(100);
+	  osDelay(200);
 
 
   }
