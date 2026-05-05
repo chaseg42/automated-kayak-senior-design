@@ -101,6 +101,7 @@ struct
 struct
 {
 	NEDVector3 world_position;
+	NEDVector3 world_position_avg;
 	NEDVector3 velocity;
 	NEDVector3 rotation;
 	UTCDate utc_date;

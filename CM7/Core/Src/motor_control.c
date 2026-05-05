@@ -27,10 +27,14 @@
 
 #define ANCHOR_HEADING_ON_DEG            15.0f
 #define ANCHOR_HEADING_OFF_DEG           5.0f
-#define ANCHOR_POSITION_ON_M             2.0f
+// Hysteresis: activate correction when > ANCHOR_POSITION_ON_M,
+// deactivate when < ANCHOR_POSITION_OFF_M
+#define ANCHOR_POSITION_ON_M             2.5f
 #define ANCHOR_POSITION_OFF_M            2.0f
-#define ANCHOR_POSITION_SPEED_MAX_0_100  80U
-#define ANCHOR_POSITION_SPEED_MIN_0_100  20U
+// Anchor correction speeds (0-100 units). Do NOT exceed 50 per request.
+#define ANCHOR_POSITION_SPEED_MAX_0_100  50U
+#define ANCHOR_POSITION_SPEED_MIN_0_100  10U
+#define ANCHOR_HEADING_SPEED_0_100       50U
 
 #define FOLLOW_SHORE_TARGET_DEPTH_CM     100.0f
 #define FOLLOW_SHORE_DEADBAND_CM         10.0f
@@ -161,6 +165,24 @@ static void GPS_CalculateOffsetMeters(double desired_lat, double desired_lon,
 	*east_m = (float)((current_lon - desired_lon) * meters_per_deg_lon);
 }
 
+/**
+ * Convert world-frame N/E offsets (meters) into the boat's body frame
+ * (forward, right) given current heading in degrees (clockwise from north).
+ * body_forward positive => ahead; body_right positive => right side.
+ */
+static void WorldToBody(float north_m, float east_m, float heading_deg,
+						float *body_forward_m, float *body_right_m)
+{
+	float th = heading_deg * GPS_DEG_TO_RAD;
+	float c = cosf(th);
+	float s = sinf(th);
+
+	// Rotate by -heading: body = R(-theta) * world
+	*body_forward_m = north_m * c + east_m * s;
+	*body_right_m = -north_m * s + east_m * c;
+}
+
+
 static uint8_t Anchor_ComputePositionSpeed(float distance_m)
 {
 	float distance_span = ANCHOR_POSITION_ON_M - ANCHOR_POSITION_OFF_M;
@@ -272,7 +294,7 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 		motor_cmd->speed_225 = state->desired_speed_cmd;
 		motor_cmd->speed_315 = 0U;
 	}
-	else
+	else if (state->desired_drive_direction == REVERSE)
 	{
 		motor_cmd->speed_45 = state->desired_speed_cmd;
 		motor_cmd->speed_135 = 0U;
@@ -298,29 +320,35 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 	if (mode_entry)
 	{
 		// Snapshot anchor reference on entry.
-		state->anchor_desired_latitude = GPS_Data.world_position.N;
-		state->anchor_desired_longitude = GPS_Data.world_position.E;
+		state->anchor_desired_latitude = GPS_Data.world_position_avg.N;
+		state->anchor_desired_longitude = GPS_Data.world_position_avg.E;
 		state->anchor_desired_heading_deg = (float)GPS_Data.rotation.E;
 		state->anchor_heading_correction_active = false;
 		state->anchor_position_correction_active = false;
 	}
 
 	{
+		// Zero outputs initially
+		motor_cmd->speed_45 = 0U;
+		motor_cmd->speed_135 = 0U;
+		motor_cmd->speed_225 = 0U;
+		motor_cmd->speed_315 = 0U;
+
 		// Priority: heading correction, then position correction.
 		float north_m = 0.0f;
 		float east_m = 0.0f;
 		GPS_CalculateOffsetMeters(state->anchor_desired_latitude, state->anchor_desired_longitude,
-													GPS_Data.world_position.N, GPS_Data.world_position.E,
+													GPS_Data.world_position_avg.N, GPS_Data.world_position_avg.E,
 													&north_m, &east_m);
 		float distance_m = sqrtf((north_m * north_m) + (east_m * east_m));
 		uint8_t anchor_position_speed_cmd = Anchor_ComputePositionSpeed(distance_m);
 
 		state->anchor_position_correction_active = (distance_m > ANCHOR_POSITION_ON_M);
 
-#if ENABLE_HEADING_CORRECTION
+		// Heading correction (hysteresis)
 		float current_heading_deg = (float)GPS_Data.rotation.E;
 		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->anchor_desired_heading_deg);
-		uint8_t anchor_heading_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_POSITION_SPEED_MAX_0_100);
+		uint8_t anchor_heading_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_HEADING_SPEED_0_100);
 
 		if (!state->anchor_heading_correction_active && (fabsf(heading_error_deg) > ANCHOR_HEADING_ON_DEG))
 		{
@@ -333,51 +361,58 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 
 		if (state->anchor_heading_correction_active)
 		{
-			// Rotate in place to regain heading.
+			// Rotate in place to regain heading (use mapped speeds)
 			if (heading_error_deg > 0.0f)
 			{
+				// rotate counter-clockwise -> motors 45 + 225
 				motor_cmd->speed_45 = anchor_heading_speed_cmd;
 				motor_cmd->speed_225 = anchor_heading_speed_cmd;
 			}
 			else if (heading_error_deg < 0.0f)
 			{
+				// rotate clockwise -> motors 135 + 315
 				motor_cmd->speed_135 = anchor_heading_speed_cmd;
 				motor_cmd->speed_315 = anchor_heading_speed_cmd;
 			}
 		}
-#endif
 
-		if (state->anchor_position_correction_active
-#if ENABLE_HEADING_CORRECTION
-				&& !state->anchor_heading_correction_active
-#endif
-		)
+		// Position correction only when heading is stable
+		if (state->anchor_position_correction_active && !state->anchor_heading_correction_active)
 		{
-			// Translate in two steps: lateral then forward/back.
-			if (fabsf(east_m) > ANCHOR_POSITION_OFF_M)
+			// Convert world offsets into body frame so position correction aims at world coordinates
+			float body_forward_m = 0.0f;
+			float body_right_m = 0.0f;
+			WorldToBody(-north_m, -east_m, (float)GPS_Data.rotation.E, &body_forward_m, &body_right_m);
+
+			// Lateral correction (body right/left) first
+			if (fabsf(body_right_m) > ANCHOR_POSITION_OFF_M)
 			{
-				if (east_m > 0.0f)
+				if (body_right_m > 0.0f)
 				{
+					// Need to move right in body frame -> use motors 225 + 315
 					motor_cmd->speed_225 = anchor_position_speed_cmd;
 					motor_cmd->speed_315 = anchor_position_speed_cmd;
 				}
 				else
 				{
+					// Need to move left in body frame -> use motors 45 + 135
 					motor_cmd->speed_45 = anchor_position_speed_cmd;
 					motor_cmd->speed_135 = anchor_position_speed_cmd;
 				}
 			}
-			else if (fabsf(north_m) > ANCHOR_POSITION_OFF_M)
+			else if (fabsf(body_forward_m) > ANCHOR_POSITION_OFF_M)
 			{
-				if (north_m > 0.0f)
+				if (body_forward_m > 0.0f)
 				{
-					motor_cmd->speed_45 = anchor_position_speed_cmd;
-					motor_cmd->speed_315 = anchor_position_speed_cmd;
+					// Need to move forward in body frame -> use motors 135 + 225
+					motor_cmd->speed_135 = anchor_position_speed_cmd;
+					motor_cmd->speed_225 = anchor_position_speed_cmd;
 				}
 				else
 				{
-					motor_cmd->speed_135 = anchor_position_speed_cmd;
-					motor_cmd->speed_225 = anchor_position_speed_cmd;
+					// Need to move backward in body frame -> use motors 45 + 315
+					motor_cmd->speed_45 = anchor_position_speed_cmd;
+					motor_cmd->speed_315 = anchor_position_speed_cmd;
 				}
 			}
 		}

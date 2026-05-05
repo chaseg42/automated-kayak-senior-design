@@ -17,6 +17,52 @@
 #include "gps.h"
 #include <string.h>
 
+#define GPS_POSITION_AVG_WINDOW 8U
+
+static double gps_lat_history[GPS_POSITION_AVG_WINDOW];
+static double gps_lon_history[GPS_POSITION_AVG_WINDOW];
+static uint8_t gps_history_index = 0U;
+static uint8_t gps_history_count = 0U;
+
+static void GPS_UpdatePositionAverage(double latitude, double longitude,
+                    double *avg_latitude, double *avg_longitude)
+{
+  double lat_sum = 0.0;
+  double lon_sum = 0.0;
+  uint8_t i = 0U;
+
+  gps_lat_history[gps_history_index] = latitude;
+  gps_lon_history[gps_history_index] = longitude;
+
+  gps_history_index++;
+  if (gps_history_index >= GPS_POSITION_AVG_WINDOW)
+  {
+    gps_history_index = 0U;
+  }
+
+  if (gps_history_count < GPS_POSITION_AVG_WINDOW)
+  {
+    gps_history_count++;
+  }
+
+  for (i = 0U; i < gps_history_count; i++)
+  {
+    lat_sum += gps_lat_history[i];
+    lon_sum += gps_lon_history[i];
+  }
+
+  if (gps_history_count > 0U)
+  {
+    *avg_latitude = lat_sum / (double)gps_history_count;
+    *avg_longitude = lon_sum / (double)gps_history_count;
+  }
+  else
+  {
+    *avg_latitude = latitude;
+    *avg_longitude = longitude;
+  }
+}
+
 GPSParsedDataStruct GPS_Parsed_Data;
 GPSDataStruct GPS_Data;
 
@@ -46,6 +92,9 @@ void decode_nav(GPSParsedDataStruct *gpds, GPSDataStruct *gds)
 	gds->world_position.N = pos[0];
 	gds->world_position.E = pos[1];
 	gds->world_position.D = pos[2];
+  GPS_UpdatePositionAverage(gds->world_position.N, gds->world_position.E,
+                  &gds->world_position_avg.N, &gds->world_position_avg.E);
+  gds->world_position_avg.D = gds->world_position.D;
 	gds->velocity.N = vel[0];
 	gds->velocity.E = vel[1];
 	gds->velocity.D = vel[2];
