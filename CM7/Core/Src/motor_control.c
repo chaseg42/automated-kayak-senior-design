@@ -10,11 +10,16 @@
 #include <math.h>
 
 #include "gps.h"
+#include "stm32h7xx_hal.h"
+#include "radar.h"
 #include "tim.h"
 
 #define MOTOR_PWM_MAX_COUNTS             10000
-#define SONAR_OBSTACLE_NEAR_CM           10.0f  // distance threshold for sonar aggressive maneuver
-#define SONAR_OBSTACLE_CAUTION_CM        100.0f // distance threshold for sonar softer maneuver
+#define SONAR_OBSTACLE_NEAR_CM           100.0f  // distance threshold for sonar aggressive maneuver
+#define RADAR_OBSTACLE_NEAR_M            1.0f   // distance threshold for radar aggressive maneuver
+#define RADAR_OBSTACLE_CAUTION_M         3.0f   // distance threshold for radar softer maneuver
+#define RADAR_FRONT_CONE_DEG             60.0f  // ignore objects outside this forward cone
+#define RADAR_STALE_TIMEOUT_MS           2000U  // ignore radar data older than this
 #define MOTOR_TURN_SOFT_DELTA_CMD        40     // change in speed for softer maneuver
 #define MOTOR_TURN_HARD_DELTA_CMD        90     // change in speed for aggressive maneuver
 #define MOTOR_DEADBAND_MIN_ON_CMD        63U
@@ -23,7 +28,7 @@
 #define ANCHOR_HEADING_ON_DEG            15.0f
 #define ANCHOR_HEADING_OFF_DEG           5.0f
 #define ANCHOR_POSITION_ON_M             2.0f
-#define ANCHOR_POSITION_OFF_M            0.5f
+#define ANCHOR_POSITION_OFF_M            2.0f
 #define ANCHOR_POSITION_SPEED_MAX_0_100  80U
 #define ANCHOR_POSITION_SPEED_MIN_0_100  20U
 
@@ -31,6 +36,8 @@
 #define FOLLOW_SHORE_DEADBAND_CM         10.0f
 #define FOLLOW_SHORE_KP_CMD_PER_CM       0.6f
 #define FOLLOW_SHORE_MAX_DELTA_CMD       90U
+
+#define ENABLE_HEADING_CORRECTION        0
 
 #define GPS_METERS_PER_DEG_LAT           111111.0f
 #define GPS_DEG_TO_RAD                   0.01745329252f
@@ -74,41 +81,58 @@ static uint8_t Motor_MapSpeed0_100_to_PWM(uint8_t speed_cmd_0_100)
 	return (uint8_t)pwm;
 }
 
-static void Motor_ComputeQuadSpeed(uint8_t base_speed_cmd, direction_t turn_direction, uint8_t turn_delta_cmd,
-										 motor_speed *motor_cmd)
+static void Motor_SetAllSpeeds(uint8_t speed_cmd_0_100, motor_speed *motor_cmd)
 {
-	// Forward uses 135/225; reverse uses 45/315 with optional yaw bias.
-	int32_t motor_45 = 0;
-	int32_t motor_135 = 0;
-	int32_t motor_225 = 0;
-	int32_t motor_315 = 0;
+	uint8_t pwm_cmd = Motor_MapSpeed0_100_to_PWM(speed_cmd_0_100);
 
-	if (turn_direction == REVERSE)
+	motor_cmd->speed_45 = pwm_cmd;
+	motor_cmd->speed_135 = pwm_cmd;
+	motor_cmd->speed_225 = pwm_cmd;
+	motor_cmd->speed_315 = pwm_cmd;
+}
+
+static bool Radar_GetAvoidanceCommand(direction_t *avoid_direction, uint8_t *delta_cmd)
+{
+	if ((avoid_direction == NULL) || (delta_cmd == NULL))
 	{
-		motor_45 = base_speed_cmd;
-		motor_315 = base_speed_cmd;
+		return false;
+	}
+
+	if (!radar_detections.radar_state)
+	{
+		return false;
+	}
+
+	uint32_t age_ms = HAL_GetTick() - radar_last_update_ms;
+	if ((radar_last_update_ms == 0U) || (age_ms > RADAR_STALE_TIMEOUT_MS))
+	{
+		return false;
+	}
+
+	float distance_m = radar_detections.distance;
+	float angle_deg = radar_detections.angle_deg;
+
+	if ((distance_m <= 0.0f) || (fabsf(angle_deg) > RADAR_FRONT_CONE_DEG))
+	{
+		return false;
+	}
+
+	if (distance_m <= RADAR_OBSTACLE_NEAR_M)
+	{
+		*delta_cmd = MOTOR_TURN_HARD_DELTA_CMD;
+	}
+	else if (distance_m <= RADAR_OBSTACLE_CAUTION_M)
+	{
+		*delta_cmd = MOTOR_TURN_SOFT_DELTA_CMD;
 	}
 	else
 	{
-		motor_135 = base_speed_cmd;
-		motor_225 = base_speed_cmd;
-
-		if (turn_direction == RIGHT)
-		{
-			motor_135 -= turn_delta_cmd;
-			motor_225 += turn_delta_cmd;
-		}
-		else if (turn_direction == LEFT)
-		{
-			motor_135 += turn_delta_cmd;
-			motor_225 -= turn_delta_cmd;
-		}
+		return false;
 	}
 
-	motor_cmd->speed_45 = Motor_ClampSpeedCmd(motor_45);
-	motor_cmd->speed_135 = Motor_ClampSpeedCmd(motor_135);
-	motor_cmd->speed_225 = Motor_ClampSpeedCmd(motor_225);
-	motor_cmd->speed_315 = Motor_ClampSpeedCmd(motor_315);
+	// Turn away from the obstacle based on angle sign.
+	*avoid_direction = (angle_deg >= 0.0f) ? LEFT : RIGHT;
+	return true;
 }
 
 static float GPS_NormalizeHeadingError(float heading_error_deg)
@@ -194,28 +218,14 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 
 	if (mode_entry)
 	{
-		// Capture initial heading so straight-line travel can be stabilized.
 		state->desired_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->speed);
 		state->desired_drive_direction = ui->direction_to_turn;
-		state->move_desired_heading_deg = (float)GPS_Data.rotation.E;
-		state->move_heading_correction_active = false;
-		state->last_drive_direction = state->desired_drive_direction;
 	}
 
 	if (got_ui_update)
 	{
-		// Refresh drive intent and reset heading lock on straight direction changes.
 		state->desired_speed_cmd = Motor_MapSpeed0_100_to_PWM(ui->speed);
 		state->desired_drive_direction = ui->direction_to_turn;
-		if (state->desired_drive_direction != state->last_drive_direction)
-		{
-			if ((state->desired_drive_direction == FORWARD) || (state->desired_drive_direction == REVERSE))
-			{
-				state->move_desired_heading_deg = (float)GPS_Data.rotation.E;
-				state->move_heading_correction_active = false;
-			}
-			state->last_drive_direction = state->desired_drive_direction;
-		}
 	}
 
 	if (state->desired_speed_cmd == 0U)
@@ -231,64 +241,43 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 		return;
 	}
 
-	Motor_ComputeQuadSpeed(state->desired_speed_cmd, state->desired_drive_direction, 0, motor_cmd);
-
-	// Sonar avoidance overrides heading stabilization in forward travel.
-	if ((state->desired_drive_direction != REVERSE) && sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM))
+	if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM))
 	{
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_HARD_DELTA_CMD, motor_cmd);
+		uint8_t speed_cmd = Motor_MapSpeed0_100_to_PWM(UI_SPEED_MAX_CMD);
+		if (state->desired_drive_direction == FORWARD)
+		{
+			motor_cmd->speed_45 = 0U;
+			motor_cmd->speed_135 = speed_cmd;
+			motor_cmd->speed_225 = speed_cmd;
+			motor_cmd->speed_315 = 0U;
+		}
+		else if (state->desired_drive_direction == REVERSE)
+		{
+			motor_cmd->speed_45 = speed_cmd;
+			motor_cmd->speed_135 = 0U;
+			motor_cmd->speed_225 = 0U;
+			motor_cmd->speed_315 = speed_cmd;
+		}
+		if (mode_entry_out != NULL)
+		{
+			*mode_entry_out = false;
+		}
+		return;
 	}
-	else if ((state->desired_drive_direction != REVERSE) && sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_CAUTION_CM))
+
+	if (state->desired_drive_direction == FORWARD)
 	{
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, RIGHT, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
+		motor_cmd->speed_45 = 0U;
+		motor_cmd->speed_135 = state->desired_speed_cmd;
+		motor_cmd->speed_225 = state->desired_speed_cmd;
+		motor_cmd->speed_315 = 0U;
 	}
 	else
 	{
-		// GPS heading correction when traveling straight forward or reverse.
-		if ((state->desired_drive_direction == FORWARD) || (state->desired_drive_direction == REVERSE))
-		{
-			float current_heading_deg = (float)GPS_Data.rotation.E;
-			float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->move_desired_heading_deg);
-
-			if (!state->move_heading_correction_active && (fabsf(heading_error_deg) > ANCHOR_HEADING_ON_DEG))
-			{
-				state->move_heading_correction_active = true;
-			}
-			else if (state->move_heading_correction_active && (fabsf(heading_error_deg) < ANCHOR_HEADING_OFF_DEG))
-			{
-				state->move_heading_correction_active = false;
-			}
-
-			if (state->move_heading_correction_active)
-			{
-				direction_t correction_direction = (heading_error_deg > 0.0f) ? RIGHT : LEFT;
-				if (state->desired_drive_direction == FORWARD)
-				{
-					// Forward: bias 135/225 pair to correct yaw.
-					Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
-				}
-				else
-				{
-					// Reverse: bias 45/315 pair to correct yaw.
-					int32_t motor_45 = motor_cmd->speed_45;
-					int32_t motor_315 = motor_cmd->speed_315;
-
-					if (correction_direction == RIGHT)
-					{
-						motor_45 += MOTOR_TURN_SOFT_DELTA_CMD;
-						motor_315 -= MOTOR_TURN_SOFT_DELTA_CMD;
-					}
-					else
-					{
-						motor_45 -= MOTOR_TURN_SOFT_DELTA_CMD;
-						motor_315 += MOTOR_TURN_SOFT_DELTA_CMD;
-					}
-
-					motor_cmd->speed_45 = Motor_ClampSpeedCmd(motor_45);
-					motor_cmd->speed_315 = Motor_ClampSpeedCmd(motor_315);
-				}
-			}
-		}
+		motor_cmd->speed_45 = state->desired_speed_cmd;
+		motor_cmd->speed_135 = 0U;
+		motor_cmd->speed_225 = 0U;
+		motor_cmd->speed_315 = state->desired_speed_cmd;
 	}
 
 	if (mode_entry_out != NULL)
@@ -318,16 +307,20 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 
 	{
 		// Priority: heading correction, then position correction.
-		float current_heading_deg = (float)GPS_Data.rotation.E;
-		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->anchor_desired_heading_deg);
 		float north_m = 0.0f;
 		float east_m = 0.0f;
 		GPS_CalculateOffsetMeters(state->anchor_desired_latitude, state->anchor_desired_longitude,
-															GPS_Data.world_position.N, GPS_Data.world_position.E,
-															&north_m, &east_m);
+													GPS_Data.world_position.N, GPS_Data.world_position.E,
+													&north_m, &east_m);
 		float distance_m = sqrtf((north_m * north_m) + (east_m * east_m));
-		uint8_t anchor_heading_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_POSITION_SPEED_MAX_0_100);
 		uint8_t anchor_position_speed_cmd = Anchor_ComputePositionSpeed(distance_m);
+
+		state->anchor_position_correction_active = (distance_m > ANCHOR_POSITION_ON_M);
+
+#if ENABLE_HEADING_CORRECTION
+		float current_heading_deg = (float)GPS_Data.rotation.E;
+		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->anchor_desired_heading_deg);
+		uint8_t anchor_heading_speed_cmd = Motor_MapSpeed0_100_to_PWM(ANCHOR_POSITION_SPEED_MAX_0_100);
 
 		if (!state->anchor_heading_correction_active && (fabsf(heading_error_deg) > ANCHOR_HEADING_ON_DEG))
 		{
@@ -336,15 +329,6 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 		else if (state->anchor_heading_correction_active && (fabsf(heading_error_deg) < ANCHOR_HEADING_OFF_DEG))
 		{
 			state->anchor_heading_correction_active = false;
-		}
-
-		if (!state->anchor_position_correction_active && (distance_m > ANCHOR_POSITION_ON_M))
-		{
-			state->anchor_position_correction_active = true;
-		}
-		else if (state->anchor_position_correction_active && (distance_m < ANCHOR_POSITION_OFF_M))
-		{
-			state->anchor_position_correction_active = false;
 		}
 
 		if (state->anchor_heading_correction_active)
@@ -361,7 +345,13 @@ void MotorControl_ModeAnchor(MotorControlState *state, bool mode_entry,
 				motor_cmd->speed_315 = anchor_heading_speed_cmd;
 			}
 		}
-		else if (state->anchor_position_correction_active)
+#endif
+
+		if (state->anchor_position_correction_active
+#if ENABLE_HEADING_CORRECTION
+				&& !state->anchor_heading_correction_active
+#endif
+		)
 		{
 			// Translate in two steps: lateral then forward/back.
 			if (fabsf(east_m) > ANCHOR_POSITION_OFF_M)
@@ -445,7 +435,15 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		depth_error_cm = FOLLOW_SHORE_TARGET_DEPTH_CM - sonar->distance;
 	}
 
-	if (depth_valid && (fabsf(depth_error_cm) > FOLLOW_SHORE_DEADBAND_CM))
+	// Radar avoidance takes priority over shoreline depth control.
+	direction_t radar_avoid_dir = RIGHT;
+	uint8_t radar_delta_cmd = 0U;
+	if (Radar_GetAvoidanceCommand(&radar_avoid_dir, &radar_delta_cmd))
+	{
+		Motor_SetAllSpeeds(ui->speed, motor_cmd);
+		state->follow_heading_correction_active = false;
+	}
+	else if (depth_valid && (fabsf(depth_error_cm) > FOLLOW_SHORE_DEADBAND_CM))
 	{
 		// Depth control: steer toward/away from shore side to maintain target depth.
 		direction_t correction_direction = state->desired_shore_side;
@@ -465,12 +463,13 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 			delta_cmd = MOTOR_TURN_SOFT_DELTA_CMD;
 		}
 
-		Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, delta_cmd, motor_cmd);
+		Motor_SetAllSpeeds(ui->speed, motor_cmd);
 		state->follow_heading_correction_active = false;
 	}
 	else
 	{
 		// Hold heading using GPS when depth is stable or invalid.
+#if ENABLE_HEADING_CORRECTION
 		float current_heading_deg = (float)GPS_Data.rotation.E;
 		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->follow_desired_heading_deg);
 
@@ -486,12 +485,16 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		if (state->follow_heading_correction_active)
 		{
 			direction_t correction_direction = (heading_error_deg > 0.0f) ? RIGHT : LEFT;
-			Motor_ComputeQuadSpeed(state->desired_speed_cmd, correction_direction, MOTOR_TURN_SOFT_DELTA_CMD, motor_cmd);
+			Motor_SetAllSpeeds(ui->speed, motor_cmd);
 		}
 		else
 		{
-			Motor_ComputeQuadSpeed(state->desired_speed_cmd, FORWARD, 0, motor_cmd);
+			Motor_SetAllSpeeds(ui->speed, motor_cmd);
 		}
+#else
+		Motor_SetAllSpeeds(ui->speed, motor_cmd);
+		state->follow_heading_correction_active = false;
+#endif
 	}
 
 	if (mode_entry_out != NULL)

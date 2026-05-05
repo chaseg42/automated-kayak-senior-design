@@ -438,8 +438,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	    ui_state.direction_to_turn = (direction_t)ui_state.rx_data[2];
 	    ui_state.speed = ui_state.rx_data[3];
 	    ui_state.override_speed45 = ui_state.rx_data[5];
-	    ui_state.override_speed135 = ui_state.rx_data[6];
-	    ui_state.override_speed225 = ui_state.rx_data[7];
+	    ui_state.override_speed135 = ui_state.rx_data[7];
+	    ui_state.override_speed225 = ui_state.rx_data[6];
 	    ui_state.override_speed315 = ui_state.rx_data[4];
 	    ui_state.new_data_flag = true;
 	}

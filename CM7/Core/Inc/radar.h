@@ -9,6 +9,7 @@
 #define INC_RADAR_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "usbd_def.h"
 
 typedef struct
@@ -20,6 +21,7 @@ typedef struct
 } RadarData;
 
 extern bool radar_task_update;
+extern uint32_t radar_last_update_ms;
 
 #define RADAR_ID 0x67
 

@@ -14,6 +14,7 @@
 
  RadarData radar_detections;
  bool radar_task_update;
+ uint32_t radar_last_update_ms;
 
 
  void usb_radar_rx(USBD_HandleTypeDef *pdev)
@@ -24,9 +25,15 @@
 
 	  uint8_t *buf = hcdc->RxBuffer;
 
-	  int r = sscanf(buf, "%f,%f,%f", &radar_detections.distance, &radar_detections.angle_deg, &radar_detections.quality);
+	int r = sscanf(buf, "%f,%f,%f", &radar_detections.distance, &radar_detections.angle_deg, &radar_detections.quality);
 
-	  if (r < 1) { radar_task_update = false; }
+	if (r < 1)
+	{
+		radar_task_update = false;
+		return;
+	}
+
+	radar_last_update_ms = HAL_GetTick();
 
  }
 
