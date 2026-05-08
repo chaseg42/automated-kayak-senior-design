@@ -17,7 +17,7 @@
 #include "gps.h"
 #include <string.h>
 
-#define GPS_POSITION_AVG_WINDOW 8U
+#define GPS_POSITION_AVG_WINDOW 5U
 
 static double gps_lat_history[GPS_POSITION_AVG_WINDOW];
 static double gps_lon_history[GPS_POSITION_AVG_WINDOW];

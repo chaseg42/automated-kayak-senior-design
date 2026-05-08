@@ -18,6 +18,7 @@ typedef struct
     float angle_deg; // degrees
     float quality; // accuracy
     bool radar_state; // ON = TRUE, OFF = FALSE
+    bool radar_state_prev;
 } RadarData;
 
 extern bool radar_task_update;

@@ -15,9 +15,11 @@
 #include "tim.h"
 
 #define MOTOR_PWM_MAX_COUNTS             10000
-#define SONAR_OBSTACLE_NEAR_CM           100.0f  // distance threshold for sonar aggressive maneuver
+#define SONAR_OBSTACLE_NEAR_CM           50.0f  // distance threshold for sonar aggressive maneuver
 #define RADAR_OBSTACLE_NEAR_M            1.0f   // distance threshold for radar aggressive maneuver
-#define RADAR_OBSTACLE_CAUTION_M         3.0f   // distance threshold for radar softer maneuver
+#define RADAR_EMERGENCY_MIN_M            1.5f
+#define RADAR_OBSTACLE_CAUTION_M         3.0f
+#define RADAR_EMERGENCY_REVERSE_M        3.0f   // distance threshold for radar emergency reverse in move mode
 #define RADAR_FRONT_CONE_DEG             60.0f  // ignore objects outside this forward cone
 #define RADAR_STALE_TIMEOUT_MS           2000U  // ignore radar data older than this
 #define MOTOR_TURN_SOFT_DELTA_CMD        40     // change in speed for softer maneuver
@@ -83,6 +85,37 @@ static uint8_t Motor_MapSpeed0_100_to_PWM(uint8_t speed_cmd_0_100)
 		pwm = 255U;
 	}
 	return (uint8_t)pwm;
+}
+
+static void Motor_SetForwardWithTurn(uint8_t base_cmd, direction_t turn_dir, uint8_t delta_cmd,
+											motor_speed *motor_cmd)
+{
+	if (motor_cmd == NULL)
+	{
+		return;
+	}
+
+	uint32_t delta_pwm = ((uint32_t)base_cmd * (uint32_t)delta_cmd) / UI_SPEED_MAX_CMD;
+	if (delta_pwm > base_cmd)
+	{
+		delta_pwm = base_cmd;
+	}
+
+	uint8_t left_cmd = base_cmd;
+	uint8_t right_cmd = base_cmd;
+	if (turn_dir == LEFT)
+	{
+		left_cmd = Motor_ClampSpeedCmd((int32_t)base_cmd - (int32_t)delta_pwm);
+	}
+	else if (turn_dir == RIGHT)
+	{
+		right_cmd = Motor_ClampSpeedCmd((int32_t)base_cmd - (int32_t)delta_pwm);
+	}
+
+	motor_cmd->speed_45 = 0U;
+	motor_cmd->speed_135 = right_cmd;
+	motor_cmd->speed_225 = left_cmd;
+	motor_cmd->speed_315 = 0U;
 }
 
 static void Motor_SetAllSpeeds(uint8_t speed_cmd_0_100, motor_speed *motor_cmd)
@@ -221,6 +254,7 @@ void MotorControl_InitState(MotorControlState *state)
 	state->move_heading_correction_active = false;
 	state->follow_desired_heading_deg = 0.0f;
 	state->follow_heading_correction_active = false;
+	state->follow_target_depth_cm = FOLLOW_SHORE_TARGET_DEPTH_CM;
 	state->anchor_desired_latitude = 0.0;
 	state->anchor_desired_longitude = 0.0;
 	state->anchor_desired_heading_deg = 0.0f;
@@ -263,28 +297,51 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 		return;
 	}
 
-	if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM))
+	if (sonar_data_valid && (sonar->distance <= SONAR_OBSTACLE_NEAR_CM) && sonar->distance != 0)
 	{
 		uint8_t speed_cmd = Motor_MapSpeed0_100_to_PWM(UI_SPEED_MAX_CMD);
 		if (state->desired_drive_direction == FORWARD)
-		{
-			motor_cmd->speed_45 = 0U;
-			motor_cmd->speed_135 = speed_cmd;
-			motor_cmd->speed_225 = speed_cmd;
-			motor_cmd->speed_315 = 0U;
-		}
-		else if (state->desired_drive_direction == REVERSE)
 		{
 			motor_cmd->speed_45 = speed_cmd;
 			motor_cmd->speed_135 = 0U;
 			motor_cmd->speed_225 = 0U;
 			motor_cmd->speed_315 = speed_cmd;
+			return;
 		}
+		// else if (state->desired_drive_direction == REVERSE)
+		// {
+		// 	motor_cmd->speed_45 = 0U;
+		// 	motor_cmd->speed_135 = speed_cmd;
+		// 	motor_cmd->speed_225 = speed_cmd;
+		// 	motor_cmd->speed_315 = 0U;
+		// }
 		if (mode_entry_out != NULL)
 		{
 			*mode_entry_out = false;
 		}
-		return;
+	
+	}
+
+	if (radar_detections.radar_state)
+	{
+		bool radar_front_object = (radar_detections.distance > 0.0f)
+			&& (radar_detections.distance < RADAR_EMERGENCY_REVERSE_M)
+			&& (radar_detections.distance > RADAR_EMERGENCY_MIN_M)
+			&& (fabsf(radar_detections.angle_deg) <= RADAR_FRONT_CONE_DEG);
+
+		if ((state->desired_drive_direction == FORWARD) && radar_front_object)
+		{
+			uint8_t speed_cmd = Motor_MapSpeed0_100_to_PWM(UI_SPEED_MAX_CMD);
+			motor_cmd->speed_45 = speed_cmd;
+			motor_cmd->speed_135 = 0U;
+			motor_cmd->speed_225 = 0U;
+			motor_cmd->speed_315 = speed_cmd;
+			if (mode_entry_out != NULL)
+			{
+				*mode_entry_out = false;
+			}
+			return;
+		}
 	}
 
 	if (state->desired_drive_direction == FORWARD)
@@ -441,6 +498,14 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		state->desired_shore_side = ui->direction_to_turn;
 		state->follow_desired_heading_deg = (float)GPS_Data.rotation.E;
 		state->follow_heading_correction_active = false;
+		if (sonar_data_valid && (sonar->distance > 0.0f))
+		{
+			state->follow_target_depth_cm = sonar->distance;
+		}
+		else
+		{
+			state->follow_target_depth_cm = FOLLOW_SHORE_TARGET_DEPTH_CM;
+		}
 	}
 
 	if (got_ui_update)
@@ -467,7 +532,7 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 
 	if (depth_valid)
 	{
-		depth_error_cm = FOLLOW_SHORE_TARGET_DEPTH_CM - sonar->distance;
+		depth_error_cm = state->follow_target_depth_cm - sonar->distance;
 	}
 
 	// Radar avoidance takes priority over shoreline depth control.
@@ -475,7 +540,7 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 	uint8_t radar_delta_cmd = 0U;
 	if (Radar_GetAvoidanceCommand(&radar_avoid_dir, &radar_delta_cmd))
 	{
-		Motor_SetAllSpeeds(ui->speed, motor_cmd);
+		Motor_SetForwardWithTurn(state->desired_speed_cmd, radar_avoid_dir, radar_delta_cmd, motor_cmd);
 		state->follow_heading_correction_active = false;
 	}
 	else if (depth_valid && (fabsf(depth_error_cm) > FOLLOW_SHORE_DEADBAND_CM))
@@ -498,7 +563,7 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 			delta_cmd = MOTOR_TURN_SOFT_DELTA_CMD;
 		}
 
-		Motor_SetAllSpeeds(ui->speed, motor_cmd);
+		Motor_SetForwardWithTurn(state->desired_speed_cmd, correction_direction, delta_cmd, motor_cmd);
 		state->follow_heading_correction_active = false;
 	}
 	else
@@ -520,17 +585,21 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		if (state->follow_heading_correction_active)
 		{
 			direction_t correction_direction = (heading_error_deg > 0.0f) ? RIGHT : LEFT;
-			Motor_SetAllSpeeds(ui->speed, motor_cmd);
+			Motor_SetForwardWithTurn(state->desired_speed_cmd, correction_direction, 0U, motor_cmd);
 		}
 		else
 		{
-			Motor_SetAllSpeeds(ui->speed, motor_cmd);
+			Motor_SetForwardWithTurn(state->desired_speed_cmd, LEFT, 0U, motor_cmd);
 		}
 #else
-		Motor_SetAllSpeeds(ui->speed, motor_cmd);
+		Motor_SetForwardWithTurn(state->desired_speed_cmd, LEFT, 0U, motor_cmd);
 		state->follow_heading_correction_active = false;
 #endif
 	}
+
+	// Enforce forward-only drive in shoreline follow (max two motors).
+	motor_cmd->speed_45 = 0U;
+	motor_cmd->speed_315 = 0U;
 
 	if (mode_entry_out != NULL)
 	{

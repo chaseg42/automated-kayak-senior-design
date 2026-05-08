@@ -428,8 +428,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
 	if (ui_state.rx_data[0] == 0x67)
 	{
-		// Radar on/off
+		radar_detections.radar_state_prev = radar_detections.radar_state;
 		radar_detections.radar_state = (bool)ui_state.rx_data[1];
+
+		  if(radar_detections.radar_state != radar_detections.radar_state_prev)
+		  {
+			  radar_task_update = radar_detections.radar_state;
+		  }
 	}
 	else if (ui_state.rx_data[0] == 0x69)
 	{

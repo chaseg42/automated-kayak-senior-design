@@ -24,6 +24,7 @@ typedef struct
 	bool move_heading_correction_active;
 	float follow_desired_heading_deg;
 	bool follow_heading_correction_active;
+	float follow_target_depth_cm;
 	double anchor_desired_latitude;
 	double anchor_desired_longitude;
 	float anchor_desired_heading_deg;
