@@ -43,8 +43,6 @@
 #define FOLLOW_SHORE_KP_CMD_PER_CM       0.6f
 #define FOLLOW_SHORE_MAX_DELTA_CMD       90U
 
-#define ENABLE_HEADING_CORRECTION        0
-
 #define GPS_METERS_PER_DEG_LAT           111111.0f
 #define GPS_DEG_TO_RAD                   0.01745329252f
 
@@ -116,16 +114,6 @@ static void Motor_SetForwardWithTurn(uint8_t base_cmd, direction_t turn_dir, uin
 	motor_cmd->speed_135 = right_cmd;
 	motor_cmd->speed_225 = left_cmd;
 	motor_cmd->speed_315 = 0U;
-}
-
-static void Motor_SetAllSpeeds(uint8_t speed_cmd_0_100, motor_speed *motor_cmd)
-{
-	uint8_t pwm_cmd = Motor_MapSpeed0_100_to_PWM(speed_cmd_0_100);
-
-	motor_cmd->speed_45 = pwm_cmd;
-	motor_cmd->speed_135 = pwm_cmd;
-	motor_cmd->speed_225 = pwm_cmd;
-	motor_cmd->speed_315 = pwm_cmd;
 }
 
 static bool Radar_GetAvoidanceCommand(direction_t *avoid_direction, uint8_t *delta_cmd)
@@ -569,7 +557,6 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 	else
 	{
 		// Hold heading using GPS when depth is stable or invalid.
-#if ENABLE_HEADING_CORRECTION
 		float current_heading_deg = (float)GPS_Data.rotation.E;
 		float heading_error_deg = GPS_NormalizeHeadingError(current_heading_deg - state->follow_desired_heading_deg);
 
@@ -591,10 +578,8 @@ void MotorControl_ModeFollowShore(MotorControlState *state, bool mode_entry, boo
 		{
 			Motor_SetForwardWithTurn(state->desired_speed_cmd, LEFT, 0U, motor_cmd);
 		}
-#else
 		Motor_SetForwardWithTurn(state->desired_speed_cmd, LEFT, 0U, motor_cmd);
 		state->follow_heading_correction_active = false;
-#endif
 	}
 
 	// Enforce forward-only drive in shoreline follow (max two motors).
