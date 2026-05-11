@@ -337,7 +337,7 @@ void handleCommand() {
   currentCommand.motor3          = (uint8_t)m3;
   currentCommand.motor4          = (uint8_t)m4;
 
-  // ── UART packet (8 bytes, motor state) ─────────────────────────────────
+  // UART packet
   // Byte 0: start byte (0x69)
   // Byte 1: mode
   // Byte 2: direction  (0 for mode 4)

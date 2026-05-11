@@ -472,27 +472,6 @@ void StartRadarTask(void *argument)
   for(;;)
   {
 
-//	  radar_task_update = true;
-//	  radar_detections.radar_state = 1;
-//
-//	  // Loop for rx the radar
-//	  // Wait for signal from USB buffer callback
-//	  // Extract buffer
-//	  // No data, we can wait for UI here
-//
-//	  if(!radar_task_update)
-//	  {
-//		  if(radar_detections.radar_state == 1)
-//		  {
-//			  radar_task_update = true;
-//		  }
-//	  }
-//
-//	  if(radar_task_update)
-//	  {
-//	  usb_radar_rx(&hUsbDeviceFS);
-//	  }
-//
 	  usb_radar_tx_state();
 
 	  osDelay(200);

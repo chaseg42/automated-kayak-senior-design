@@ -346,6 +346,20 @@ void MotorControl_ModeMove(MotorControlState *state, bool mode_entry, bool got_u
 		motor_cmd->speed_225 = 0U;
 		motor_cmd->speed_315 = state->desired_speed_cmd;
 	}
+	else if (state->desired_drive_direction == LEFT)
+	{
+		motor_cmd->speed_45 = state->desired_speed_cmd;
+		motor_cmd->speed_135 = state->desired_speed_cmd;
+		motor_cmd->speed_225 = 0U;
+		motor_cmd->speed_315 = 0U;
+	}
+	else if (state->desired_drive_direction == RIGHT)
+	{
+		motor_cmd->speed_45 = 0U;
+		motor_cmd->speed_135 = 0U;
+		motor_cmd->speed_225 = state->desired_speed_cmd;
+		motor_cmd->speed_315 = state->desired_speed_cmd;
+	}
 
 	if (mode_entry_out != NULL)
 	{
