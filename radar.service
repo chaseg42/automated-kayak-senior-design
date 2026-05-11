@@ -1,0 +1,16 @@
+[Unit]
+Description=Radar controlled startup service
+After=network.target
+
+[Service]
+Type=simple
+User=analog
+WorkingDirectory=/home/analog/radar
+ExecStart=/home/analog/radar/radar_env/bin/python3 /home/analog/radar/radar_controlled.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
